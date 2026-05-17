@@ -1,0 +1,122 @@
+/* ===== TUTORIAL CSS ===== */
+
+.tut-dim {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.4); /* Lightened background */
+  z-index: 400;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+.tut-dim.active { opacity: 1; }
+
+.tut-spotlight {
+  position: fixed;
+  z-index: 401;
+  pointer-events: none;
+  border-radius: 6px;
+  box-shadow:
+    0 0 0 9999px rgba(0,0,0,0.65),
+    0 0 0 2px var(--neon),
+    0 0 30px var(--neon),
+    inset 0 0 20px rgba(0,200,255,0.1);
+  transition: all 0.4s cubic-bezier(0.4,0,0.2,1);
+  opacity: 0;
+}
+
+.tut-spotlight.active { opacity: 1; }
+
+.tut-bubble {
+  position: fixed;
+  z-index: 500;
+  background: var(--bg2);
+  border: 1px solid var(--neon);
+  box-shadow: 0 0 40px rgba(0,200,255,0.25), 0 20px 60px rgba(0,0,0,0.8);
+  border-radius: 8px;
+  padding: 18px 20px;
+  max-width: 300px; width: 90vw;
+  animation: bubbleIn 0.35s cubic-bezier(0.175,0.885,0.32,1.275);
+}
+
+@keyframes bubbleIn {
+  from { opacity: 0; transform: scale(0.85) translateY(12px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.tut-mascot {
+  font-size: 32px;
+  text-align: center;
+  margin-bottom: 10px;
+  animation: mascotBounce 2s ease-in-out infinite;
+}
+
+@keyframes mascotBounce {
+  0%,100% { transform: translateY(0); }
+  50%      { transform: translateY(-5px); }
+}
+
+.tut-text {
+  font-family: var(--font-body);
+  font-size: 14px; font-weight: 500;
+  color: var(--text);
+  line-height: 1.6;
+  margin-bottom: 14px;
+}
+
+.tut-footer {
+  display: flex; align-items: center;
+  justify-content: space-between;
+}
+
+.tut-step {
+  font-family: var(--font-mono);
+  font-size: 10px; color: var(--text-dim);
+  letter-spacing: 1px;
+}
+
+.tut-next {
+  background: var(--neon);
+  border: none;
+  color: var(--bg);
+  font-family: var(--font-head);
+  font-size: 11px; font-weight: 700;
+  padding: 7px 16px;
+  border-radius: var(--radius);
+  letter-spacing: 1px;
+  transition: all 0.15s ease;
+}
+
+.tut-next:hover {
+  background: #fff;
+  box-shadow: var(--glow);
+}
+
+/* Highlight pulse on tutorial-targeted elements */
+.tut-highlight {
+  position: relative;
+  z-index: 402 !important;
+  pointer-events: all !important;
+  animation: tutHighlight 1.5s ease-in-out infinite;
+}
+
+@keyframes tutHighlight {
+  0%,100% { box-shadow: 0 0 0 2px var(--neon), 0 0 15px var(--neon); }
+  50%      { box-shadow: 0 0 0 4px var(--neon), 0 0 35px var(--neon), 0 0 60px rgba(0,200,255,0.3); }
+}
+
+/* Animated arrow pointing at targets */
+.tut-arrow {
+  position: fixed;
+  z-index: 450;
+  font-size: 28px;
+  animation: arrowPulse 0.8s ease-in-out infinite;
+  pointer-events: none;
+  filter: drop-shadow(0 0 8px var(--neon));
+  color: var(--neon);
+}
+
+@keyframes arrowPulse {
+  0%,100% { transform: translate(-50%,-50%) scale(1); }
+  50%      { transform: translate(-50%,-50%) scale(1.3); }
+}
