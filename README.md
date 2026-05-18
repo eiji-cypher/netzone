@@ -1,4 +1,4 @@
-# 🌐 NetZone - Internet Cafe Tycoon
+# 🌐 PiSoNET Simulator - By EijiDev Team
 
 A high-fidelity 3D Management Simulator built with Three.js. Start your journey in a neighborhood Filipino computer shop and grow it into a global esports empire.
 
