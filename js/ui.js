@@ -1360,10 +1360,10 @@ function renderCredits() {
   const body = document.getElementById('modal-body');
   body.innerHTML = `
     <div style="text-align:center; line-height:2">
-      <div style="font-family:var(--font-head); color:var(--neon); margin-bottom:10px">NETZONE TEAM</div>
-      <p>Lead Developer — Gemini Code Assist</p>
-      <p>Graphics Engine — Three.js</p>
-      <p>UI/UX Design — Cyber Tycoon Labs</p>
+      <div style="font-family:var(--font-head); color:var(--neon); margin-bottom:10px">PISONET TEAM</div>
+      <p>Lead Developer — Eiji, Rohan, Chiongki</p>
+      <p>Graphics Engine — Three.js, CCS</p>
+      <p>UI/UX Design — EijiDev COMLAB DMC CCS</p>
       <div style="margin-top:20px; font-size:12px; color:var(--text-dim)">Special thanks to all the managers!</div>
     </div>
   `;
