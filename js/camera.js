@@ -17,9 +17,15 @@ window.CameraSystem = {
   flashlight: false,
   flashlightMesh: null,
   _tempVec: null, // Reusable vector for performance
+  initialized: false,
 
   init() {
-    this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 200);
+    if (this.initialized) return;
+    this.initialized = true;
+
+    // Increased near plane to 0.5 to prevent floor clipping when zoomed in
+    // Increased far plane to 1000 to ensure world background never disappears
+    this.camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.5, 1000);
     this.orbitTarget = new THREE.Vector3(0, 0, 0);
     this.fpPos = new THREE.Vector3(0, 1.7, 10);
     this._tempVec = new THREE.Vector3();
@@ -125,7 +131,7 @@ window.CameraSystem = {
       this.camera.lookAt(this.orbitTarget);
     } else {
       // WASD movement
-      const speed = 6 * delta;
+      const speed = 7.5 * delta; // Increased slightly for better feel
       const forward = new THREE.Vector3(-Math.sin(this.fpYaw), 0, -Math.cos(this.fpYaw));
       const right   = new THREE.Vector3(Math.cos(this.fpYaw), 0, -Math.sin(this.fpYaw));
 

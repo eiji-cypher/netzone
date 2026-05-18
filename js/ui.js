@@ -1,5 +1,100 @@
 /* ===== UI SYSTEM ===== */
 
+// Centralized UI Manager to handle state and navigation
+window.UIManager = {
+  activeModal: null,
+  history: [],
+  sidebarCollapsed: false,
+  rightPanelsCollapsed: false,
+
+  // Centralized Modal Mapping
+  renderers: {
+    upgrades: renderUpgrades,
+    staff:    renderStaff,
+    rivals:   renderRivals,
+    achievements: renderAchievements,
+    skills:   renderSkills,
+    settings: renderSettings,
+    credits:  renderCredits,
+    reception: renderReception,
+    server:   renderServer,
+    certificate: renderCertificate,
+    dayEnd: renderDayEnd,
+    pancitMinigame: renderPancitMinigame,
+    managerStats: renderManagerStats,
+    hacking: renderHackingMinigame,
+  },
+
+  titles: {
+    upgrades:      '⬆️ UPGRADES',
+    staff:         '👔 STAFF',
+    rivals:        '⚔️ RIVALS',
+    achievements:  '🎖️ ACHIEVEMENTS',
+    skills:        '🌳 SKILL TREE',
+    settings:      '⚙️ SETTINGS',
+    credits:       'ℹ️ CREDITS',
+    reception:     '🛎️ RECEPTION',
+    server:        '🖥️ SERVER ROOM',
+    certificate:   '📜 CERTIFICATE',
+    dayEnd:        '📅 DAY FINISHED',
+    pancitMinigame:'🍜 PANCIT CANTON COOKER',
+    managerStats:  '💻 REMOTE TERMINAL',
+    hacking:       '🚨 SECURITY BREACH',
+  },
+
+  init() {
+    console.log("🖥️ UIManager Initialized");
+    // Ensure initial states are clean
+    this.closeModal();
+  },
+
+  toggleSidebar() {
+    this.sidebarCollapsed = !this.sidebarCollapsed;
+    const container = document.getElementById('hud-main-container');
+    const btn = document.getElementById('btn-toggle-left');
+    container.classList.toggle('collapsed', this.sidebarCollapsed);
+    btn.textContent = this.sidebarCollapsed ? '▶' : '◀';
+  },
+
+  toggleRightPanels() {
+    this.rightPanelsCollapsed = !this.rightPanelsCollapsed;
+    const wrap = document.getElementById('right-panels-wrap');
+    const btn = document.getElementById('btn-toggle-right');
+    if (wrap) wrap.classList.toggle('collapsed', this.rightPanelsCollapsed);
+    if (btn) {
+      btn.innerHTML = (this.rightPanelsCollapsed ? '◀' : '▶') + 
+                      ' <div id="queue-badge" class="notification-badge hidden">0</div>';
+    }
+    // Refresh badge visibility
+    window.updateQueueSidebar();
+  },
+
+  goBack() {
+    if (this.history.length > 0) {
+      const last = this.history.pop();
+      openModal(last.route, last.data, 'back');
+    } else {
+      this.closeModal();
+    }
+  },
+
+  updateHeader() {
+    const backBtn = document.getElementById('modal-back-btn');
+    if (backBtn) {
+      backBtn.classList.toggle('hidden', this.history.length === 0);
+    }
+  },
+
+  closeModal() {
+    this.activeModal = null;
+    this.history = [];
+    currentModalData = null;
+    document.getElementById('modal-overlay').classList.add('hidden');
+    document.getElementById('modal-body').innerHTML = '';
+    this.updateHeader();
+  }
+};
+
 // ===== GAME START / STOP =====
 function startGame(isLoad, saveData, newName) {
   const loading = document.getElementById('loading-screen');
@@ -10,10 +105,6 @@ function startGame(isLoad, saveData, newName) {
   loading.classList.remove('fade-out');
   menu.style.display = 'none';
 
-  CameraSystem.init(); 
-  SceneManager.init(); // Initialize renderer, scene, etc.
-
-  // Initialize GameState (new or load)
   if (isLoad && saveData) {
     GameState.restore(saveData);
   } else {
@@ -31,14 +122,17 @@ function startGame(isLoad, saveData, newName) {
       playtime: 0,
       lanPartyCooldownHours: 0,
       currentTrendId: 'stable',
-      trash: [], // Ensure trash is cleared on new game
-      reviews: [] // Ensure reviews are cleared on new game
+      trash: [], 
+      reviews: []
     });
     document.getElementById('btn-pancit')?.classList.add('hidden');
   }
 
-  // Initialize and build scene after GameState is set
-  SceneManager.rebuildFullScene(); // This will reset, build static, then add dynamic elements based on the now-restored GameState
+  CameraSystem.init(); 
+  SceneManager.init(); 
+  UIManager.init();
+  if (window.SoundManager) SoundManager.init(); 
+  SceneManager.rebuildFullScene(); 
 
   document.getElementById('loading-cafe-name').textContent = GameState.cafeName;
   status.textContent = "CLOSED";
@@ -49,6 +143,264 @@ function startGame(isLoad, saveData, newName) {
   startTick();
   checkDailyReward();
 
+  // Inject Professional Design System
+  if (!document.getElementById('netzone-pro-styles')) {
+    const style = document.createElement('style');
+    style.id = 'netzone-pro-styles';
+    style.innerHTML = `
+      :root {
+        --bg-dark: #02040a;
+        --panel-bg: rgba(13, 17, 28, 0.95);
+        --accent: #00c8ff;
+        --neon-green: #39ff14;
+        --neon-pink: #ff2d78;
+        --gold: #ffd700;
+        --text-main: #e0e6ed;
+        --font-main: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        --safe-padding: clamp(10px, 2vw, 24px);
+        --ui-scale: clamp(0.8, 1vw + 0.5rem, 1.2);
+      }
+      
+      /* Global Layout Fixes */
+      * { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
+      body, html { 
+        margin: 0; padding: 0; overflow: hidden; 
+        background: var(--bg-dark); font-family: var(--font-main);
+      }
+      #hud {
+        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        pointer-events: none; display: flex; flex-direction: column;
+        padding: var(--safe-padding); gap: 12px; z-index: 100;
+      }
+      #hud-top { 
+        display: flex; justify-content: space-between; pointer-events: auto;
+        gap: 15px; flex-wrap: wrap;
+      }
+      #hud-bottom {
+        display: flex; justify-content: space-between; pointer-events: auto;
+        gap: 15px; flex-wrap: wrap;
+        padding-left: 180px; /* Offset to prevent sidebar overlap with Reputation text */
+      }
+
+      /* Central Navigation Hierarchy */
+      #hud-main-container {
+        display: flex;
+        flex-direction: row;
+        position: absolute;
+        left: 0;
+        top: 100px;
+        height: calc(100vh - 180px);
+        pointer-events: none;
+        z-index: 150;
+        width: 140px;
+        transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      #hud-main-container.collapsed {
+        transform: translateX(-130px);
+      }
+
+      #sidebar {
+        pointer-events: auto;
+        display: flex;
+        flex-direction: column;
+        flex-wrap: nowrap;
+        justify-content: flex-start;
+        align-items: center;
+        gap: 8px;
+        width: 130px;
+        height: 100%;
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding-right: 6px;
+        padding-bottom: 120px;
+        scrollbar-width: thin;
+        scrollbar-color: #00ffff44 transparent;
+        scroll-behavior: smooth;
+        background: rgba(4, 8, 16, 0.9);
+        border-right: 1px solid rgba(0, 200, 255, 0.1);
+        backdrop-filter: blur(5px);
+        -webkit-overflow-scrolling: touch;
+      }
+      .sb-btn { 
+        flex-shrink: 0; 
+        min-height: 85px; 
+        width: 100%;
+        position: relative;
+        overflow: hidden;
+        border: none;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+        background: transparent;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        transition: background 0.2s;
+      }
+      .sb-btn:hover { 
+        background: rgba(0, 200, 255, 0.15); 
+        animation: sb-glitch 0.2s steps(2) infinite;
+      }
+      
+      /* Scanline Overlay */
+      .sb-btn::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: repeating-linear-gradient(0deg, rgba(0,0,0,0.2) 0px, rgba(0,0,0,0) 2px);
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.2s;
+      }
+      .sb-btn:hover::after { opacity: 1; }
+
+      .sb-btn.active { background: rgba(0, 200, 255, 0.2); border-left: 3px solid var(--accent); }
+      .sb-btn span { font-size: 11px; margin-top: 6px; line-height: 1.1; color: var(--text-main); }
+      .sb-btn small { font-size: 9px; opacity: 0.7; font-family: var(--font-mono); }
+      
+      /* Affordability States */
+      .sb-btn.cannot-afford span { color: var(--neon-pink); opacity: 0.6; }
+      .sb-btn.can-afford span { color: var(--neon-green); }
+      
+      /* Retractable UI Elements */
+      .side-toggle-btn {
+        pointer-events: auto;
+        background: rgba(4, 8, 16, 0.95);
+        border: 1px solid rgba(0, 200, 255, 0.2);
+        color: var(--accent);
+        font-family: var(--font-mono);
+        font-size: 14px;
+        cursor: pointer;
+        width: 25px;
+        height: 50px;
+        display: flex; align-items: center; justify-content: center;
+        z-index: 200;
+        position: relative;
+      }
+      #btn-toggle-left { border-radius: 0 8px 8px 0; align-self: center; }
+      #btn-toggle-right { border-radius: 8px 0 0 8px; height: 60px; }
+
+      #right-panels-wrap {
+        position: absolute;
+        right: 0; top: 100px;
+        height: calc(100vh - 200px);
+        display: flex; align-items: center;
+        pointer-events: none;
+        z-index: 150;
+        transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      #right-panels-wrap.collapsed { transform: translateX(calc(100% - 25px)); }
+      #right-panels-content {
+        background: rgba(4, 8, 16, 0.9);
+        border-left: 1px solid rgba(0, 200, 255, 0.1);
+        height: 100%; width: 200px;
+        overflow-y: auto; pointer-events: auto;
+      }
+      .notification-badge {
+        position: absolute; top: -5px; right: -5px;
+        background: var(--neon-pink); color: white;
+        border-radius: 50%; width: 20px; height: 20px;
+        font-size: 10px; display: flex; align-items: center; justify-content: center;
+        font-weight: bold; box-shadow: 0 0 10px var(--neon-pink);
+      }
+
+      /* Repositioned Notifications (Safe Zone) */
+      #toast-container {
+        position: fixed; left: 180px; top: 100px;
+        display: flex; flex-direction: column; gap: 8px; z-index: 5000;
+      }
+      #event-log {
+        position: fixed; left: 180px; bottom: 120px;
+        width: 300px; pointer-events: none; z-index: 5000;
+      }
+
+      /* Notification Pulse Animation */
+      @keyframes pulse-notify {
+        0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 45, 120, 0.7); }
+        70% { transform: scale(1.1); box-shadow: 0 0 0 10px rgba(255, 45, 120, 0); }
+        100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 45, 120, 0); }
+      }
+      .pulse-anim {
+        animation: pulse-notify 0.6s ease-out;
+      }
+      #btn-toggle-right.pulse-anim {
+        border-color: var(--neon-pink);
+      }
+
+      /* Cyberpunk Glitch Animation */
+      @keyframes sb-glitch {
+        0% { transform: translate(0); filter: hue-rotate(0deg); }
+        25% { transform: translate(-1px, 1px); filter: hue-rotate(90deg); }
+        50% { transform: translate(1px, -1px); filter: hue-rotate(180deg); }
+        75% { transform: translate(-1px, -1px); filter: hue-rotate(270deg); }
+        100% { transform: translate(0); filter: hue-rotate(0deg); }
+      }
+
+      /* AAA Quality High-Visibility Scrollbar */
+      #sidebar::-webkit-scrollbar {
+        width: 6px;
+      }
+      #sidebar::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      #sidebar::-webkit-scrollbar-thumb {
+        background: rgba(0, 255, 255, 0.35);
+        border-radius: 999px;
+      }
+      #sidebar::-webkit-scrollbar-thumb:hover {
+        background: rgba(0, 255, 255, 0.6);
+      }
+
+      .hud-panel {
+        background: var(--panel-bg); border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 8px; padding: 12px 18px; display: flex; align-items: center;
+        gap: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); backdrop-filter: blur(10px);
+      }
+      /* Sidebar Interaction Fix */
+      #queue-sidebar, #active-sidebar {
+        pointer-events: auto !important;
+        z-index: 110 !important;
+      }
+      .hud-val { font-size: calc(1.1rem * var(--ui-scale)); font-weight: 700; color: var(--accent); }
+      .hud-label { font-size: 0.75rem; color: #8892b0; text-transform: uppercase; letter-spacing: 1px; }
+      
+      /* Scroll Fixes & Modal Scaling */
+      #modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(5px);
+        display: flex; align-items: center; justify-content: center; z-index: 10000;
+      }
+      .modal-window {
+        width: 90vw; max-width: 900px; max-height: 85vh;
+        background: var(--panel-bg); border: 2px solid var(--accent);
+        border-radius: 12px; display: flex; flex-direction: column;
+        animation: modalFadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      .modal-back-btn {
+        background: none; border: none; color: var(--accent);
+        font-family: var(--font-main); font-size: 14px; cursor: pointer;
+        padding: 5px 10px; display: flex; align-items: center; gap: 5px;
+      }
+      .modal-back-btn:hover { text-shadow: 0 0 10px var(--accent); }
+      #modal-body {
+        flex: 1; overflow-y: auto; padding: 25px;
+        scrollbar-width: thin; scrollbar-color: var(--accent) transparent;
+      }
+      #modal-body::-webkit-scrollbar { width: 6px; }
+      #modal-body::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 10px; }
+
+      /* Responsive Adjustments */
+      @media (max-width: 1400px) { :root { --ui-scale: 0.9; } }
+      @media (max-width: 1024px) { .hud-panel { padding: 8px 12px; } }
+      
+      @keyframes modalFadeIn {
+        from { opacity: 0; transform: scale(0.95) translateY(10px); }
+        to { opacity: 1; transform: scale(1) translateY(0); }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
   setTimeout(() => {
     status.textContent = "OPEN";
     status.className = "loading-text status-open";
@@ -57,8 +409,7 @@ function startGame(isLoad, saveData, newName) {
     loading.classList.add('fade-out');
     document.getElementById('game-canvas').classList.remove('hidden');
     document.getElementById('hud').classList.remove('hidden');
-    document.getElementById('queue-sidebar').classList.remove('hidden');
-    document.getElementById('active-sidebar').classList.remove('hidden');
+    document.getElementById('right-panels-wrap').classList.remove('hidden');
     
     if (!isLoad) {
       setTimeout(() => Tutorial.start(), 1000);
@@ -71,21 +422,21 @@ function showMainMenu() {
   SaveSystem.saveGame(true);
   clearInterval(tickInterval);
   document.getElementById('hud').classList.add('hidden');
-  document.getElementById('queue-sidebar').classList.add('hidden');
-  document.getElementById('active-sidebar').classList.add('hidden');
+  document.getElementById('right-panels-wrap').classList.add('hidden');
   document.getElementById('game-canvas').classList.add('hidden');
   document.getElementById('main-menu').style.display = '';
-  GameState.customers = [];
-  GameState.pcs = [];
-  GameState.staff = [];
-  GameState.trash = []; // Ensure trash is cleared on returning to main menu
-  SceneManager.resetScene(); // Clear all scene objects
+  
+  // Centralized Reset
+  UIManager.closeModal();
+  GameState.pcs = []; GameState.customers = []; GameState.staff = []; GameState.trash = [];
+  SceneManager.resetScene(); 
   if (SceneManager.frameId) cancelAnimationFrame(SceneManager.frameId);
 }
 
 // ===== HUD UPDATES =====
 function updateHUD() {
   document.getElementById('val-cash').textContent   = '₱' + Math.floor(GameState.cash).toLocaleString();
+  updateSidebarAffordability();
   document.getElementById('val-rep').textContent    = Math.floor(GameState.reputation) + '%';
   document.getElementById('val-cust').textContent   = GameState.customers.length + '/' + GameState.maxCustomers;
   document.getElementById('val-level').textContent  = 'Lv.' + GameState.level;
@@ -110,6 +461,21 @@ function updateHUD() {
   // Rep bar
   document.getElementById('rep-bar').style.width = GameState.reputation + '%';
   document.getElementById('rep-label').textContent = Math.floor(GameState.reputation) + ' / 100';
+  
+  // Responsive Font Scaling (Inject Global Style)
+  if (!document.getElementById('global-ui-scaling')) {
+    const style = document.createElement('style');
+    style.id = 'global-ui-scaling';
+    style.innerHTML = `
+      :root { --font-size-base: 16px; --spacing-std: 12px; }
+      .modal-content { padding: var(--spacing-std); font-size: calc(var(--font-size-base) * 1.1); }
+      .upgrade-name { font-size: 1.2rem; margin-bottom: 8px; }
+      .hud-val { font-size: 1.1rem; font-weight: bold; }
+      button { padding: 10px 15px; font-size: 1rem; cursor: pointer; transition: transform 0.1s; }
+      button:active { transform: scale(0.95); }
+    `;
+    document.head.appendChild(style);
+  }
 
   // LAN party button cooldown indicator
   const lanBtn = document.getElementById('btn-lan');
@@ -125,12 +491,59 @@ function updateHUD() {
   }
 }
 
+function updateSidebarAffordability() {
+  const costs = {
+    'btn-add-pc': 150,
+    'btn-add-desk': 50,
+    'btn-add-pisonet': 80,
+    'btn-add-ps': 250,
+    'btn-add-vr': 400,
+    'btn-lan': 100
+  };
+  
+  for (const [id, cost] of Object.entries(costs)) {
+    const btn = document.getElementById(id);
+    if (!btn) continue;
+    if (GameState.cash >= cost) {
+      btn.classList.add('can-afford');
+      btn.classList.remove('cannot-afford');
+    } else {
+      btn.classList.add('cannot-afford');
+      btn.classList.remove('can-afford');
+    }
+  }
+}
+
+let lastQueuedCount = 0;
 window.updateQueueSidebar = function() {
   const qList = document.getElementById('queue-list');
   const aList = document.getElementById('active-list');
+  const badge = document.getElementById('queue-badge');
   if (!qList || !aList) return;
 
   const queued = GameState.customers.filter(c => c.state === 'queued');
+  
+  // Update Notification Badge
+  if (badge) {
+    const count = queued.length;
+
+    // Play sound and pulse if queue increased
+    if (count > lastQueuedCount) {
+      if (window.SoundManager) SoundManager.play('ping');
+      
+      const toggleBtn = document.getElementById('btn-toggle-right');
+      if (toggleBtn) {
+        toggleBtn.classList.remove('pulse-anim');
+        void toggleBtn.offsetWidth; // Trigger reflow to restart animation
+        toggleBtn.classList.add('pulse-anim');
+      }
+    }
+    lastQueuedCount = count;
+
+    badge.textContent = count;
+    if (badge) badge.classList.toggle('hidden', count === 0 || !UIManager.rightPanelsCollapsed);
+  }
+
   qList.innerHTML = queued.map(c => {
     const globalIdx = GameState.customers.indexOf(c);
     const icon = c.isVIP ? '👑' : c.emotion === 'angry' ? '😡' : '👤';
@@ -183,87 +596,83 @@ window.updateQueueSidebar = function() {
 };
 
 // ===== MODALS =====
-const MODAL_RENDERERS = {
-  upgrades:    renderUpgrades,
-  staff:       renderStaff,
-  rivals:      renderRivals,
-  achievements:renderAchievements,
-  skills:      renderSkills,
-  settings:    renderSettings,
-  credits:     renderCredits,
-  reception:   renderReception,
-  server:      renderServer,
-  certificate: renderCertificate,
-  dayEnd:      renderDayEnd,
-  pancitMinigame: renderPancitMinigame,
-  managerStats:   renderManagerStats,
-  reviews:        renderSocialMedia,
-  socialMedia:    renderSocialMedia,
-  hacking:        renderHackingMinigame
-};
-
 let currentModalData = null;
-function openModal(id, data) {
-  // Handle index-based data for reception from sidebar clicks
-  if (id === 'reception' && typeof data === 'number') {
+function openModal(id, data, navMode = 'reset') {
+  // 1. Strict Route Validation
+  // If passed an event, extract ID from dataset; otherwise use the string
+  const route = (id && id.target && id.target.dataset && id.target.dataset.modalId) ? id.target.dataset.modalId : id;
+  
+  if (typeof route !== 'string' || !UIManager.renderers[route]) {
+    console.warn(`Routing Error: Attempted to open invalid modal: ${route}`);
+    return;
+  }
+
+  // 2. Navigation History Management
+  if (navMode === 'reset') {
+    UIManager.history = [];
+  } else if (navMode === 'push' && UIManager.activeModal) {
+    UIManager.history.push({ route: UIManager.activeModal, data: currentModalData });
+  }
+
+  UIManager.activeModal = route;
+  currentModalData = null;
+  
+  const modalBody = document.getElementById('modal-body');
+  modalBody.innerHTML = '<div class="loading-spinner"></div>'; // UI Feedback
+  modalBody.scrollTop = 0;
+
+  // 4. Data Injection
+  if (route === 'reception' && typeof data === 'number') {
     currentModalData = GameState.customers[data];
   } else {
     currentModalData = data;
   }
   
   document.getElementById('modal-overlay').classList.remove('hidden');
-  const titles = {
-    upgrades:      '⬆️ UPGRADES',
-    staff:         '👔 STAFF',
-    rivals:        '⚔️ RIVALS',
-    achievements:  '🎖️ ACHIEVEMENTS',
-    skills:        '🌳 SKILL TREE',
-    settings:      '⚙️ SETTINGS',
-    credits:       'ℹ️ CREDITS',
-    reception:     '🛎️ RECEPTION',
-    server:        '🖥️ SERVER ROOM',
-    certificate:   '📜 CERTIFICATE',
-    dayEnd:        '📅 DAY FINISHED',
-    pancitMinigame:'🍜 PANCIT CANTON COOKER',
-    managerStats:  '💻 REMOTE TERMINAL',
-    hacking:       '🚨 SECURITY BREACH',
-    socialMedia:   '📱 SOCIAL MEDIA',
-    reviews:       '⭐ CUSTOMER REVIEWS'
-  };
-  document.getElementById('modal-title').textContent = titles[id] || id.toUpperCase();
+  if (window.SoundManager) SoundManager.play('ui_open');
 
-  if (id === 'server') renderServer(); // Ensure server modal content is updated
-  MODAL_RENDERERS[id]?.();
+  // 5. Update UI
+  document.getElementById('modal-title').textContent = UIManager.titles[route] || route.toUpperCase();
+  UIManager.updateHeader();
+
+  // 6. Execute renderer
+  try {
+    UIManager.renderers[route]();
+  } catch (err) {
+    console.error(`UI Renderer Crash in [${route}]:`, err);
+    modalBody.innerHTML = `<div class="error">Failed to load ${route}.</div>`;
+  }
 }
 
 function closeModal() {
-  document.getElementById('modal-overlay').classList.add('hidden');
+  UIManager.closeModal();
 }
 
 // ===== UPGRADES =====
-const UPGRADES_DEF = [
-  { id:'internet', label:'Internet Speed', icon:'📡', maxLevel:4, costs:[200,400,800,1500], desc:'Faster internet = more customers & income' },
-  { id:'pcQuality',label:'PC Quality',    icon:'💻', maxLevel:4, costs:[300,600,1200,2500], desc:'Better PCs earn more per hour' },
-  { id:'lighting', label:'LED Lighting',  icon:'💡', maxLevel:1, costs:[150], desc:'Improves ambiance and +5 reputation' },
-  { id:'aircon',   label:'Air Con',       icon:'❄️', maxLevel:1, costs:[400], desc:'Keeps customers comfortable longer' },
-  { id:'pisonetMode', label:'Piso Net Mode', icon:'🪙', maxLevel:1, costs:[200], desc:'Unlock cheaper, shorter Piso Net sessions' },
-  { id:'serverRack', label:'Server Rack', icon:'🗄️', maxLevel:1, costs:[1000], desc:'Enables diskless booting & easier updates' },
-  { id:'networkLevel', label:'Network Infrastructure', icon:'🌐', maxLevel:5, costs:[500,1000,2000,4000,8000], desc:'Increases overall bandwidth and stability' },
-  { id:'snackbar', label:'Snack Bar',     icon:'🍕', maxLevel:1, costs:[350], desc:'Extra passive income from snacks' },
-  { id:'security', label:'Security Cams', icon:'📷', maxLevel:1, costs:[250], desc:'Reduces theft & vandalism events' },
-  { id:'neon',     label:'Neon Signs',    icon:'🌟', maxLevel:1, costs:[200], desc:'Attracts more walk-in customers' },
-  { id:'wallColor', label:'Wall Paint',   icon:'🎨', maxLevel:4, costs:[100,200,400,800], desc:'Change the interior wall theme' },
-  { id:'floorPattern', label:'Flooring',  icon:'🏁', maxLevel:4, costs:[150,300,500,1000], desc:'Upgrade to premium floor patterns' },
-  { id:'coffeeMachine', label:'Coffee Machine', icon:'☕', maxLevel:1, costs:[500], desc:'Prevents boredom and adds coffee orders' },
-  { id:'pancitCooker', label:'Canton Cooker', icon:'🍜', maxLevel:1, costs:[600], desc:'Unlock Pancit Canton minigame & double snack income' },
-];
+window.UPGRADES_DATABASE = {
+  internet:      { label:'Internet Speed', icon:'📡', maxLevel:4, costs:[200,400,800,1500], desc:'Faster internet = more customers & income' },
+  pcQuality:     { label:'PC Quality',    icon:'💻', maxLevel:4, costs:[300,600,1200,2500], desc:'Better PCs earn more per hour' },
+  lighting:      { label:'LED Lighting',  icon:'💡', maxLevel:1, costs:[150], desc:'Improves ambiance and +5 reputation' },
+  aircon:        { label:'Air Con',       icon:'❄️', maxLevel:1, costs:[400], desc:'Keeps customers comfortable longer' },
+  pisonetMode:   { label:'Piso Net Mode', icon:'🪙', maxLevel:1, costs:[200], desc:'Unlock cheaper, shorter Piso Net sessions' },
+  serverRack:    { label:'Server Rack',   icon:'🗄️', maxLevel:1, costs:[1000], desc:'Enables diskless booting & easier updates' },
+  networkLevel:  { label:'Network Infrastructure', icon:'🌐', maxLevel:5, costs:[500,1000,2000,4000,8000], desc:'Increases overall bandwidth and stability' },
+  snackbar:      { label:'Snack Bar',     icon:'🍕', maxLevel:1, costs:[350], desc:'Extra passive income from snacks' },
+  security:      { label:'Security Cams', icon:'📷', maxLevel:1, costs:[250], desc:'Reduces theft & vandalism events' },
+  neon:          { label:'Neon Signs',    icon:'🌟', maxLevel:1, costs:[200], desc:'Attracts more walk-in customers' },
+  wallColor:     { label:'Wall Paint',   icon:'🎨', maxLevel:4, costs:[100,200,400,800], desc:'Change the interior wall theme' },
+  floorPattern:  { label:'Flooring',     icon:'🏁', maxLevel:4, costs:[150,300,500,1000], desc:'Upgrade to premium floor patterns' },
+  coffeeMachine: { label:'Coffee Machine', icon:'☕', maxLevel:1, costs:[500], desc:'Prevents boredom and adds coffee orders' },
+  pancitCooker:  { label:'Canton Cooker', icon:'🍜', maxLevel:1, costs:[600], desc:'Unlock Pancit Canton minigame & double snack income' },
+};
 
 function renderUpgrades() {
   const body = document.getElementById('modal-body');
-  body.innerHTML = '<div class="upgrade-grid">' + UPGRADES_DEF.map(u => {
+  body.innerHTML = '<div class="upgrade-grid">' + Object.keys(UPGRADES_DATABASE).map(id => {
+    const u = UPGRADES_DATABASE[id];
     const cur = typeof GameState.upgrades[u.id] === 'boolean'
       ? (GameState.upgrades[u.id] ? 1 : 0)
-      : GameState.upgrades[u.id];
+      : GameState.upgrades[id];
     const maxed = cur >= u.maxLevel;
     const cost = maxed ? 0 : u.costs[cur];
     const pips = Array.from({length: u.maxLevel}, (_,i) => `<div class="upgrade-pip ${i < cur ? 'filled' : ''}"></div>`).join('');
@@ -272,7 +681,7 @@ function renderUpgrades() {
       <div class="upgrade-name">${u.icon} ${u.label}</div>
       <div class="upgrade-desc">${u.desc}</div>
       <div class="upgrade-level">${pips}</div>
-      <button class="upgrade-btn" ${maxed || GameState.cash < cost ? 'disabled' : ''} onclick="buyUpgrade('${u.id}')">
+      <button class="upgrade-btn" ${maxed || GameState.cash < cost ? 'disabled' : ''} onclick="buyUpgrade('${id}')">
         ${maxed ? '✅ MAXED' : '⬆️ UPGRADE — ₱' + cost}
       </button>
     </div>`;
@@ -280,13 +689,14 @@ function renderUpgrades() {
 }
 
 function buyUpgrade(id) {
-  const def = UPGRADES_DEF.find(u => u.id === id);
+  const def = UPGRADES_DATABASE[id];
   if (!def) return;
   const cur = typeof GameState.upgrades[id] === 'boolean' ? (GameState.upgrades[id] ? 1 : 0) : GameState.upgrades[id];
   if (cur >= def.maxLevel) return;
   const cost = def.costs[cur];
   if (GameState.cash < cost) { showToast('Not enough money!', 'warn'); return; }
   GameState.addCash(-cost, '-₱' + cost);
+  if (window.SoundManager) window.SoundManager.play('purchase');
   if (typeof GameState.upgrades[id] === 'boolean') GameState.upgrades[id] = true;
   else GameState.upgrades[id]++;
   if (id === 'lighting') GameState.addReputation(5);
@@ -385,23 +795,10 @@ function renderRivals() {
         <div class="rival-stat"><span class="rival-stat-val">${r.pcs}</span><span class="rival-stat-lbl">PCs</span></div>
         <div class="rival-stat"><span class="rival-stat-val">${r.internet}x</span><span class="rival-stat-lbl">INTERNET</span></div>
       </div>
-      ${!r.isPlayer ? `<button class="upgrade-btn" style="margin-top:10px; border-color:var(--danger); color:var(--danger); padding:4px 8px; font-size:9px;" onclick="sabotageRival(${r.id})">💣 Sabotage (₱500)</button>` : ''}
     </div>`).join('');
 
   body.innerHTML = html;
 }
-
-window.sabotageRival = function(rivalId) {
-  if (GameState.cash < 500) { showToast('Kulang ang pera!', 'warn'); return; }
-  const rival = RivalSystem.rivals.find(r => r.id === rivalId);
-  if (!rival) return;
-  
-  GameState.addCash(-500, 'Sabotaged ' + rival.name);
-  rival.rep = Math.max(0, rival.rep - 10);
-  showToast(`💣 You review bombed ${rival.name}!`, 'success');
-  addEventLog(`💀 Sabotage: You paid bot-farms to attack ${rival.name}.`);
-  renderRivals();
-};
 
 // ===== ACHIEVEMENTS =====
 function renderAchievements() {
@@ -412,7 +809,7 @@ function renderAchievements() {
   <div class="ach-grid">` + ACHIEVEMENTS.map(a => {
     const isUnlocked = !!GameState.achievements[a.id];
     return `
-    <div class="ach-card ${isUnlocked ? 'unlocked' : ''}" ${isUnlocked ? `onclick="openModal('certificate', '${a.id}')" style="cursor:pointer;"` : ''}>
+    <div class="ach-card ${isUnlocked ? 'unlocked' : ''}" ${isUnlocked ? `onclick="openModal('certificate', '${a.id}', 'push')" style="cursor:pointer;"` : ''}>
       <div class="ach-card-icon">${a.icon}</div>
       <div class="ach-card-name">${a.name}</div>
       <div class="ach-card-desc">${a.desc}</div>
@@ -456,7 +853,6 @@ function renderCertificate() {
         </div>
       </div>
       <div style="display:flex; gap:10px; margin-top:20px;">
-        <button class="upgrade-btn" style="flex:1" onclick="openModal('achievements')">BACK TO AWARDS</button>
         <button class="upgrade-btn" style="flex:1; border-color:var(--gold); color:var(--gold)" onclick="shareCertificate()">📸 SHARE ACHIEVEMENT</button>
       </div>
     </div>
@@ -694,8 +1090,10 @@ function spawnFloatPop(text, x, y, isNeg) {
   const el = document.createElement('div');
   el.className = 'float-pop' + (isNeg ? ' neg' : '');
   el.textContent = text;
-  el.style.left = (x - 20) + 'px';
-  el.style.top  = (y - 30) + 'px';
+  // Move popups to the left "Safe Zone" by default
+  const safeX = 180;
+  el.style.left = ((x || safeX) - 20) + 'px';
+  el.style.top  = ((y || window.innerHeight / 2) - 30) + 'px';
   document.getElementById('float-container').appendChild(el);
   setTimeout(() => el.remove(), 1500);
 }
@@ -746,8 +1144,8 @@ function checkDailyReward() {
 }
 
 // ===== CREDITS / SETTINGS stubs =====
-window.showSettings = function() { openModal('settings'); };
-window.showCredits = function() { openModal('credits'); };
+window.showSettings = () => openModal('settings');
+window.showCredits = () => openModal('credits');
 
 function renderSettings() {
   const body = document.getElementById('modal-body');
@@ -902,15 +1300,23 @@ function renderReception() {
   } else {
     html += `<div class="upgrade-grid">`;
     
-    // Only show session types that match machines we have free
-    const availableTypes = Object.keys(window.SESSION_TYPES).filter(typeId => {
+    // Enforce Preferences: Filter available types based on machine availability AND customer preference
+    let availableTypes = Object.keys(window.SESSION_TYPES).filter(typeId => {
       if (typeId === 'vr') return GameState.pcs.some(p => p.type === 'vr' && !p.occupied && !p.broken);
       if (typeId === 'playstation') return GameState.pcs.some(p => p.type === 'ps' && !p.occupied && !p.broken);
       if (typeId === 'pisonet') return GameState.pcs.some(p => p.type === 'pisonet' && !p.occupied && !p.broken) && GameState.upgrades.pisonetMode;
       if (typeId === 'vip') return GameState.pcs.some(p => p.isVIP && !p.occupied && !p.broken);
       // Standard PC sessions
       return GameState.pcs.some(p => p.type === 'pc' && !p.isVIP && !p.occupied && !p.broken);
+    }).filter(typeId => {
+      // Refactored AI: VIPs only use VIP stations. Normal customers do not.
+      if (customer.isVIP) return typeId === 'vip';
+      return typeId !== 'vip';
     });
+
+    if (availableTypes.length === 0) {
+      html += `<div style="color:var(--warn); text-align:center; padding:10px;">Customer is unhappy. No compatible stations free!</div>`;
+    }
 
     availableTypes.forEach(typeId => {
       const type = window.SESSION_TYPES[typeId];
@@ -955,10 +1361,10 @@ function renderCredits() {
   body.innerHTML = `
     <div style="text-align:center; line-height:2">
       <div style="font-family:var(--font-head); color:var(--neon); margin-bottom:10px">NETZONE TEAM</div>
-      <p>Lead Developer — Eiji DEV</p>
-      <p>Graphics Engine — Three.js, CSS</p>
-      <p>UI/UX Design — Eiji DEV, Rohan, Chiongki</p>
-      <div style="margin-top:20px; font-size:12px; color:var(--text-dim)">Special thanks to all the devs that's keeping us inspired!</div>
+      <p>Lead Developer — Gemini Code Assist</p>
+      <p>Graphics Engine — Three.js</p>
+      <p>UI/UX Design — Cyber Tycoon Labs</p>
+      <div style="margin-top:20px; font-size:12px; color:var(--text-dim)">Special thanks to all the managers!</div>
     </div>
   `;
 }
@@ -1020,43 +1426,10 @@ window.toggleTurboCooling = function() {
   renderManagerStats();
 };
 
-window.toggleFlashlight = function() {
-  if (window.CameraSystem) CameraSystem.toggleFlashlight();
-  document.getElementById('btn-flashlight').classList.toggle('active', CameraSystem.flashlight);
-};
-
-window.toggleChat = function() {
-  document.getElementById('chat-sidebar').classList.toggle('chat-collapsed');
-  document.getElementById('chat-toggle-btn').textContent = document.getElementById('chat-sidebar').classList.contains('chat-collapsed') ? '▶' : '◀';
-};
-
-window.payBill = function(billId) {
-  const billIdx = GameState.upgrades.unpaidBills.findIndex(b => b.id === billId);
-  const bill = GameState.upgrades.unpaidBills[billIdx];
-  if (GameState.cash < bill.amount) { showToast('Kulang ang pera, boss!', 'danger'); return; }
-  GameState.addCash(-bill.amount, 'Paid ' + bill.label);
-  GameState.upgrades.unpaidBills.splice(billIdx, 1);
-  renderManagerStats();
-};
-
 function renderManagerStats() {
   const body = document.getElementById('modal-body');
   
   let html = `
-    <div class="staff-section-title">⚖️ PHILIPPINE GOVERNMENT & UTILITY BILLS</div>
-    <div class="staff-list" style="margin-bottom:20px;">
-      ${GameState.upgrades.unpaidBills.length === 0 ? '<div style="color:var(--success); font-size:11px; text-align:center; padding:10px;">Walang utang! All bills paid.</div>' : 
-        GameState.upgrades.unpaidBills.map(b => `
-          <div class="staff-card" style="border-color:var(--danger)">
-            <div style="flex:1">
-              <div class="staff-name" style="color:var(--danger)">${b.label}</div>
-              <div style="font-size:10px; color:var(--text-dim)">Kailangang bayaran: ₱${b.amount.toLocaleString()}</div>
-            </div>
-            <button class="hire-btn" style="border-color:var(--success); color:var(--success)" onclick="payBill('${b.id}')">PAY NOW</button>
-          </div>
-        `).join('')}
-    </div>
-
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:20px;">
       <div class="upgrade-card" style="grid-column: span 2; border-color:var(--gold)">
         <div class="upgrade-name">SYSTEMS OVERRIDE</div>
@@ -1064,11 +1437,6 @@ function renderManagerStats() {
           ${GameState.upgrades.turboCooling ? '❄️ TURBO COOLING: ACTIVE' : '❄️ ACTIVATE TURBO COOLING'}
         </button>
       </div>
-
-      ${GameState.upgrades.socialMedia ? `
-        <button class="upgrade-btn" style="margin-top:15px; border-color:var(--neon3); color:var(--neon3)" onclick="openModal('socialMedia')">
-          📱 MANAGE SOCIAL MEDIA
-        </button>` : ''}
 
       <div class="upgrade-card" style="border-color:var(--neon)">
         <div class="upgrade-name">CAFE PERFORMANCE</div>
@@ -1088,21 +1456,6 @@ function renderManagerStats() {
       </div>
     </div>
     
-    <div class="staff-section-title">⭐ CAFE RATING & REVIEWS (${GameState.rating.toFixed(1)} / 5.0)</div>
-    <div style="background:rgba(0,0,0,0.2); padding:10px; border-radius:4px; max-height:150px; overflow-y:auto; margin-bottom:20px;">
-      ${GameState.reviews.length === 0 ? '<div style="text-align:center; color:var(--text-dim); font-size:11px">No reviews yet.</div>' : 
-        GameState.reviews.map(r => `
-          <div style="border-bottom:1px solid rgba(255,255,255,0.05); padding:6px 0; font-size:11px;">
-            <div style="display:flex; justify-content:space-between;">
-              <span style="color:var(--neon3)">${r.name}</span>
-              <span style="color:var(--gold)">${'⭐'.repeat(r.stars)}</span>
-            </div>
-            <div style="color:var(--text); font-style:italic">"${r.comment}"</div>
-            <div style="color:var(--text-dim); font-size:9px">Day ${r.day}</div>
-          </div>
-        `).join('')}
-    </div>
-
     <div class="staff-section-title">REMOTE STAFF MONITORING</div>
     <div class="staff-list">
   `;
@@ -1126,50 +1479,5 @@ function renderManagerStats() {
   }
 
   html += '</div><button class="upgrade-btn" style="margin-top:20px; border-color:var(--danger); color:var(--danger)" onclick="closeModal()">EXIT TERMINAL</button>';
-  body.innerHTML = html;
-}
-
-window.respondToReview = function(reviewId) {
-  const cost = 20;
-  if (GameState.cash < cost) { showToast('Not enough money to respond!', 'warn'); return; }
-  
-  const review = GameState.reviews.find(r => r.id === reviewId);
-  if (!review) return;
-
-  GameState.addCash(-cost, '-₱' + cost + ' social media');
-  review.responded = true;
-
-  // Reputation boost based on original stars, doubled if Verified
-  const baseBoost = review.stars < 3 ? 2 : 5;
-  const repBoost = GameState.upgrades.verifiedBadge ? baseBoost * 2 : baseBoost;
-  GameState.addReputation(repBoost);
-  showToast(`💬 Responded to review! +${repBoost} Rep`, 'success');
-  renderSocialMedia();
-};
-
-function renderSocialMedia() {
-  const body = document.getElementById('modal-body');
-  
-  let html = `
-    <div class="staff-section-title">RECENT CUSTOMER REVIEWS</div>
-    <div style="background:rgba(0,0,0,0.2); padding:10px; border-radius:4px; max-height:400px; overflow-y:auto; margin-bottom:20px;">
-      ${GameState.reviews.length === 0 ? '<div style="text-align:center; color:var(--text-dim); font-size:11px">No reviews yet.</div>' : 
-        GameState.reviews.map(r => `
-          <div style="border-bottom:1px solid rgba(255,255,255,0.05); padding:10px 0; font-size:12px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-              <span style="color:var(--neon3); font-weight:bold;">${r.name}</span>
-              <span style="color:var(--gold)">${'⭐'.repeat(r.stars)}</span>
-            </div>
-            <div style="color:var(--text); font-style:italic; margin-bottom:8px;">"${r.comment}"</div>
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-              <div style="color:var(--text-dim); font-size:10px">Day ${r.day}</div>
-              ${r.responded ? '<span style="color:var(--success); font-size:10px;">✅ Responded</span>' :
-                              `<button class="upgrade-btn" style="padding:4px 8px; font-size:10px;" onclick="respondToReview('${r.id}')">RESPOND (₱20)</button>`}
-            </div>
-          </div>
-        `).join('')}
-    </div>
-    <button class="upgrade-btn" style="margin-top:10px; border-color:var(--danger); color:var(--danger)" onclick="closeModal()">CLOSE</button>
-  `;
   body.innerHTML = html;
 }

@@ -172,6 +172,29 @@ body {
   font-size: 11px; color: var(--text-dim);
 }
 
+/* Preloader Styles */
+.preload-container {
+  width: 200px;
+  margin: 20px auto;
+  text-align: center;
+}
+
+.preload-bar {
+  width: 0%;
+  height: 4px;
+  background: var(--neon);
+  box-shadow: 0 0 10px var(--neon);
+  transition: width 0.3s ease;
+  margin-bottom: 8px;
+}
+
+.preload-text {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  letter-spacing: 1px;
+}
+
 /* ===== CANVAS ===== */
 #game-canvas {
   position: fixed; inset: 0;

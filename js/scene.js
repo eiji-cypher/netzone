@@ -9,93 +9,180 @@ window.SceneManager = {
   mouse: null,
   floorMesh: null,
   gridHelper: null,
+  composer: null,
   frameId: null,
   loader: null,
-  ambientLight: null,
-  sunLight: null,
   toolRotation: 0,
   constructionSlots: [],
   hoveredSlot: null,
   trashMeshes: [],
   navGrid: [], // 0 = walkable, 1 = blocked
   rainParticles: null,
-  renovationOverlay: null,
   staffDoorHinge: null,
   staffDoorOpen: false,
-  securityCameraMeshes: [],
   _prevStaffDoorOpen: false,
+  securityCameraMeshes: [],
   fullSign: null,
   achievementPosters: [],
   wallMeshes: [],
+  trophyCaseMesh: null,
   zones: [
     { name: 'PC Zone', xMin: -14, xMax: 14, zMin: -12, zMax: 8, allowedTools: ['pc', 'desk'], color: 0x39ff14 }, // Green for PC
-    { name: 'VR Zone', xMin: -14, xMax: -8, zMin: -14, zMax: -12, allowedTools: ['vr'], color: 0xaa00ff },
+    { name: 'VR Zone', xMin: -14, xMax: -7, zMin: -14, zMax: -11, allowedTools: ['vr'], color: 0xaa00ff },
     { name: 'Piso Net Zone', xMin: -14, xMax: 14, zMin: 8, zMax: 12, allowedTools: ['pisonet'], color: 0x00c8ff }, // Blue for PisoNet
-    { name: 'PlayStation Zone', xMin: 8, xMax: 14, zMin: -14, zMax: -12, allowedTools: ['ps'], color: 0x0066ff },
+    { name: 'PlayStation Zone', xMin: 7, xMax: 14, zMin: -14, zMax: -9, allowedTools: ['ps'], color: 0x0066ff }, 
     { name: 'Lounge Zone', xMin: -14, xMax: 14, zMin: 8, zMax: 14, allowedTools: ['coffeeMachine', 'vending'], color: 0x39ff14 },
     { name: 'Office Zone', xMin: -5, xMax: 5, zMin: -14, zMax: -10, allowedTools: [], color: 0xffd700 },
-    { name: 'VIP Zone', xMin: 6, xMax: 14, zMin: -14, zMax: -6, allowedTools: ['pc'], color: 0xffd700 },
+    { name: 'VIP Zone', xMin: 6, xMax: 14, zMin: -14, zMax: -5, allowedTools: ['pc'], color: 0xffd700 },
   ],
-  trophyCaseMesh: null,
   securityCameraPositions: [
-    { id: 'cam1', pos: new THREE.Vector3(-14, 4, 13), lookAt: new THREE.Vector3(0, 1, 0) }, // Entrance
-    { id: 'cam2', pos: new THREE.Vector3(14, 4, 13), lookAt: new THREE.Vector3(0, 1, 0) },  // Right side
-    { id: 'cam3', pos: new THREE.Vector3(-14, 4, -13), lookAt: new THREE.Vector3(0, 1, 0) }, // Back left
-    { id: 'cam4', pos: new THREE.Vector3(14, 4, -13), lookAt: new THREE.Vector3(0, 1, 0) },  // Back right
-    { id: 'cam_office', pos: new THREE.Vector3(0, 4, -9), lookAt: new THREE.Vector3(0, 1, -13) }, // Office view
+    { id: 'cam1', pos: new THREE.Vector3(-14, 4, 13), lookAt: new THREE.Vector3(0, 1, 0) },
+    { id: 'cam2', pos: new THREE.Vector3(14, 4, 13), lookAt: new THREE.Vector3(0, 1, 0) },
+    { id: 'cam3', pos: new THREE.Vector3(-14, 4, -13), lookAt: new THREE.Vector3(0, 1, 0) },
+    { id: 'cam4', pos: new THREE.Vector3(14, 4, -13), lookAt: new THREE.Vector3(0, 1, 0) },
+    { id: 'cam_office', pos: new THREE.Vector3(0, 4, -9), lookAt: new THREE.Vector3(0, 1, -13) },
   ],
   serverRackMesh: null,
+  
+  // Centralized Asset Cleanup
+  disposeObject(obj) {
+    if (!obj) return;
+    obj.traverse(node => {
+      if (node.isMesh) {
+        if (node.geometry) node.geometry.dispose();
+        if (node.material) {
+          if (Array.isArray(node.material)) {
+            node.material.forEach(m => this.disposeMaterial(m));
+          } else {
+            this.disposeMaterial(node.material);
+          }
+        }
+      }
+    });
+  },
+  disposeMaterial(mat) {
+    if (mat.map) mat.map.dispose();
+    if (mat.lightMap) mat.lightMap.dispose();
+    if (mat.bumpMap) mat.bumpMap.dispose();
+    if (mat.normalMap) mat.normalMap.dispose();
+    if (mat.specularMap) mat.specularMap.dispose();
+    if (mat.envMap) mat.envMap.dispose();
+    mat.dispose();
+  },
 
   init() {
     if (this.renderer) return; // Prevent duplicate initialization
 
     const canvas = document.getElementById('game-canvas');
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.renderer.setClearColor(0x080b14);
 
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.FogExp2(0x080b14, 0.035);
-    this.loader = new (THREE.GLTFLoader || window.GLTFLoader)();
+    this.scene.fog = new THREE.FogExp2(0x080b14, 0.012); // Reduced density for a clearer interior
+
+    // Asset Preloader Setup
+    this.loadingManager = new THREE.LoadingManager();
+    this.loadingManager.onProgress = (url, itemsLoaded, itemsTotal) => {
+      const progress = Math.floor((itemsLoaded / itemsTotal) * 100);
+      const bar = document.getElementById('preload-bar');
+      const text = document.getElementById('preload-text');
+      if (bar) bar.style.width = progress + '%';
+      if (text) text.textContent = `LOADING ASSETS... ${progress}%`;
+    };
+    this.loadingManager.onLoad = () => { if (document.getElementById('preload-text')) document.getElementById('preload-text').textContent = "SYSTEMS READY"; };
+
+    this.loader = new (THREE.GLTFLoader || window.GLTFLoader)(this.loadingManager);
 
     this.clock = new THREE.Clock();
     this.raycaster = new THREE.Raycaster();
     this.mouse = new THREE.Vector2();
 
+    // Ensure tracking arrays are initialized
+    this.resetTrackingArrays();
     this.initNavGrid();
+    
+    // Optimized Renderer Settings
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.setClearColor(0x080b14);
+    this.renderer.outputEncoding = THREE.sRGBEncoding; // Modern color handling
+
+    // Post-Processing: Bloom/Glow setup
+    const Composer = window.EffectComposer || THREE.EffectComposer;
+    const RenderPass = window.RenderPass || THREE.RenderPass;
+    const UnrealBloomPass = window.UnrealBloomPass || THREE.UnrealBloomPass;
+
+    if (Composer && RenderPass && UnrealBloomPass) {
+      this.composer = new Composer(this.renderer);
+      const renderPass = new RenderPass(this.scene, CameraSystem.camera);
+      this.composer.addPass(renderPass);
+
+      const bloomPass = new UnrealBloomPass(
+        new THREE.Vector2(window.innerWidth, window.innerHeight),
+        1.2, 0.4, 0.85 // Strength, Radius, Threshold
+      );
+      bloomPass.threshold = 0.2;
+      this.composer.addPass(bloomPass);
+    } else {
+      console.warn("NetZone: Post-processing scripts not found. Neon glow disabled but game will continue.");
+    }
+
+    // Event Listeners (Centralized)
     window.addEventListener('resize', () => this.onResize());
     canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
     canvas.addEventListener('click', (e) => this.onCanvasClick(e));
     
     window.addEventListener('keydown', (e) => {
       if (e.code === 'KeyR' && this.activeTool) {
-        this.toolRotation += Math.PI / 2;
+        this.toolRotation += Math.PI / 4;
         showToast('🔄 Rotated object', 'info');
       }
-      if (e.code === 'Escape') { setTool(null); showToast('Cancelled', 'info'); }
-      if (e.code === 'KeyF') toggleFlashlight();
-      if (e.code === 'KeyE' && CameraSystem.mode !== 'tycoon') this.interactInPerson();
+      // ESC to cancel current tool
+      if (e.code === 'Escape') {
+        setTool(null);
+        showToast('Cancelled', 'info');
+      }
+      // First-person interaction with 'E'
+      if (e.code === 'KeyE' && CameraSystem.mode !== 'tycoon') {
+        this.interactInPerson();
+      }
     });
 
     this.animate();
   },
 
+  resetTrackingArrays() {
+    this.wallMeshes = [];
+    this.achievementPosters = [];
+    this.securityCameraMeshes = [];
+    this.trashMeshes = [];
+    this.constructionSlots = [];
+  },
+
   rebuildFullScene() {
     this.resetScene();
-    this.buildRoom(); // Builds floor, walls, static doors, reception, queue table
-    this.buildRoomStaticElements(); // Builds ceiling, lights, particles, rain, neon strips
-    this.addConstructionSlots(); // Adds construction slots
-    this.addDynamicSceneElements(); // Adds office, VIP, cameras, posters, server, coffee, trophy case
-    this.rebuildStateObjects(); // Crucial: Places actual PCs and Staff meshes
+    this.preloadEssentialAssets();
+    this.buildRoom();           // Rebuild floor/walls first
+    this.buildRoomStaticElements(); // Rebuild ceiling/neon/lighting
+    this.addConstructionSlots(); 
+    this.addDynamicSceneElements(); // Expansion rooms
+    this.rebuildStateObjects();     // Crucial: Places actual PC and Staff models
 
-    // Refresh visual state
-    this.updateVisualTheme();
+    // Apply final visual state
+    this.updateVisualTheme();       // Apply floor/wall colors
     this.updateWeatherVisuals(GameState.weather);
     if (GameState.upgrades.pancitCooker) document.getElementById('btn-pancit')?.classList.remove('hidden');
     GameState.trash.forEach(t => this.spawnTrashVisual(t));
+  },
+
+  preloadEssentialAssets() {
+    // Preload common textures/models here to prevent popping
+    const texLoader = new THREE.TextureLoader(this.loadingManager);
+    // Example: this.assets.noiseTex = texLoader.load('path/to/texture.jpg');
+    
+    // Add any GLB models here as well:
+    // this.loader.load('models/pc_high.glb', (gltf) => { this.assets.pcHigh = gltf.scene; });
   },
 
   rebuildStateObjects() {
@@ -110,27 +197,28 @@ window.SceneManager = {
 
   resetScene() {
     if (!this.scene) return;
-    // Completely clear scene objects to prevent duplicates or ghost meshes
-    const toRemove = this.scene.children.filter(obj => 
-      obj.type !== 'PerspectiveCamera' && 
-      !obj.isAmbientLight && 
-      obj !== this.sunLight
-    );
-    
+    const toRemove = this.scene.children.filter(obj => !obj.isLight);
     toRemove.forEach(obj => {
-      if (obj.geometry) obj.geometry.dispose();
-      if (obj.material) obj.material.dispose();
+      obj.traverse(node => {
+        if (node.isMesh) {
+          if (node.geometry) node.geometry.dispose();
+          if (node.material) {
+            if (Array.isArray(node.material)) node.material.forEach(m => { if(m.map) m.map.dispose(); m.dispose(); });
+            else { if(node.material.map) node.material.map.dispose(); node.material.dispose(); }
+          }
+        }
+      });
       this.scene.remove(obj);
     });
     this.constructionSlots = [];
     this.trashMeshes = [];
+    this.wallMeshes = [];
+    this.securityCameraMeshes = [];
+    this.trophyCaseMesh = null;
     this.serverRackMesh = null;
     this.fullSign = null;
     this.achievementPosters = [];
-    this.securityCameraMeshes = [];
-    this.wallMeshes = [];
     this.initNavGrid();
-    this.trophyCaseMesh = null; // Clear trophy case reference
     // Re-block static table in nav grid as it's not re-added during resetScene
     for(let x = 2; x <= 12; x++) {
       for(let z = 12; z <= 15; z++) this.updateNavGrid(x, z, false);
@@ -140,42 +228,27 @@ window.SceneManager = {
   buildRoom() {
     // Floor
     const floorGeo = new THREE.PlaneGeometry(30, 30, 30, 30);
-    const floorMat = new THREE.MeshLambertMaterial({ color: 0x1a2235 });
+    // High-quality floor with fallback
+    const floorMat = new THREE.MeshStandardMaterial({ color: 0x1a2235, roughness: 0.8, metalness: 0.2 });
     this.floorMesh = new THREE.Mesh(floorGeo, floorMat);
     this.floorMesh.rotation.x = -Math.PI / 2;
     this.floorMesh.receiveShadow = true;
     this.floorMesh.name = 'floor';
-    this.scene.add(this.floorMesh);
+    this.scene.add(this.floorMesh); // Floor added first to depth buffer
 
     // Grid
     this.gridHelper = new THREE.GridHelper(30, 30, 0x00c8ff, 0x0a2040);
-    this.gridHelper.position.y = 0.01;
     this.gridHelper.name = 'gridHelper';
+    this.gridHelper.position.y = 0.01;
     this.scene.add(this.gridHelper);
 
     // Walls
-    const wallMat = new THREE.MeshLambertMaterial({ color: 0x151b2b });
-    
-    // Segmented Back Wall for Window
-    const sideWallGeo = new THREE.BoxGeometry(10, 5, 0.2);
-    const wallBackL = new THREE.Mesh(sideWallGeo, wallMat);
-    wallBackL.position.set(-10, 2.5, -15);
-    this.scene.add(wallBackL);
-    this.wallMeshes.push(wallBackL);
-
-    const wallBackR = new THREE.Mesh(sideWallGeo, wallMat);
-    wallBackR.position.set(10, 2.5, -15);
-    this.scene.add(wallBackR);
-    this.wallMeshes.push(wallBackR);
-
-    const wallBottom = new THREE.Mesh(new THREE.BoxGeometry(10, 1.5, 0.2), wallMat);
-    wallBottom.position.set(0, 0.75, -15);
-    this.scene.add(wallBottom);
-    this.wallMeshes.push(wallBottom);
-
-    const glass = new THREE.Mesh(new THREE.PlaneGeometry(10, 3.5), new THREE.MeshPhysicalMaterial({ color: 0x88ccff, transparent: true, opacity: 0.1, transmission: 0.8 }));
-    glass.position.set(0, 3.25, -14.9);
-    this.scene.add(glass);
+    const wallMat = new THREE.MeshLambertMaterial({ color: 0x0a1020 });
+    const wallGeo = new THREE.BoxGeometry(30, 5, 0.2);
+    const wallBack = new THREE.Mesh(wallGeo, wallMat);
+    wallBack.position.set(0, 2.5, -15);
+    wallBack.receiveShadow = true;
+    this.scene.add(wallBack);
 
     const wallLeft = new THREE.Mesh(new THREE.BoxGeometry(0.2, 5, 30), wallMat);
     wallLeft.position.set(-15, 2.5, 0);
@@ -193,7 +266,7 @@ window.SceneManager = {
     this.scene.add(doorFrame);
 
     const door = new THREE.Mesh(new THREE.BoxGeometry(2.4, 3.8, 0.1), new THREE.MeshLambertMaterial({ color: 0x442211 }));
-    door.position.set(0, 1.9, 15.0); // Move slightly out of the wall
+    door.position.set(0, 1.9, 14.9);
     this.scene.add(door);
 
     const handle = new THREE.Mesh(new THREE.SphereGeometry(0.1), new THREE.MeshLambertMaterial({ color: 0xffd700 }));
@@ -214,26 +287,6 @@ window.SceneManager = {
     lineTable.position.set(7, 0.4, 13.5);
     this.scene.add(lineTable);
 
-    // Reception / Cashier Desk
-    const receptionDesk = new THREE.Mesh(new THREE.BoxGeometry(4, 0.8, 1.2), new THREE.MeshLambertMaterial({ color: 0x111111 }));
-    receptionDesk.position.set(-8, 0.4, 13.5);
-    this.scene.add(receptionDesk);
-    this.updateNavGrid(-8, 13, false);
-
-    // Staff Break Room Door
-    const staffDoorFrame = new THREE.Mesh(new THREE.BoxGeometry(2.5, 4, 0.2), wallMat);
-    staffDoorFrame.position.set(-14.8, 2, 10);
-    staffDoorFrame.rotation.y = Math.PI / 2;
-    this.scene.add(staffDoorFrame);
-
-    this.staffDoorHinge = new THREE.Group();
-    this.staffDoorHinge.position.set(-14.8, 1.9, 11); // Move slightly away from wall surface
-    this.staffDoorHinge.rotation.y = Math.PI / 2;
-    const staffDoorMesh = new THREE.Mesh(new THREE.BoxGeometry(2, 3.8, 0.1), new THREE.MeshLambertMaterial({ color: 0x0a0a0a }));
-    staffDoorMesh.position.set(0, 0, -1); // Offset by half-width so it pivots on edge
-    this.staffDoorHinge.add(staffDoorMesh);
-    this.scene.add(this.staffDoorHinge);
-
     // Mark static table as blocked in nav grid
     for(let x = 2; x <= 12; x++) {
       for(let z = 12; z <= 15; z++) this.updateNavGrid(x, z, false);
@@ -241,28 +294,33 @@ window.SceneManager = {
 
     // Dynamic elements based on GameState
     // These will be added during restore or new game setup
-    this.updateVisualTheme();
   },
 
   initNavGrid() {
-    this.navGrid = [];
-    for (let x = 0; x <= 30; x++) {
-      this.navGrid[x] = new Array(31).fill(0);
-    }
+    // 30x30 world mapped to 60x60 grid for high-fidelity collision
+    this.navGrid = Array.from({length: 61}, () => new Int8Array(61).fill(0));
   },
 
-  updateNavGrid(worldX, worldZ, walkable) {
-    const gx = Math.round(worldX + 15);
-    const gz = Math.round(worldZ + 15);
-    if (gx >= 0 && gx <= 30 && gz >= 0 && gz <= 30) {
-      this.navGrid[gx][gz] = walkable ? 0 : 1;
+  updateNavGrid(worldX, worldZ, walkable, radius = 1) {
+    // Convert world (-15 to 15) to grid (0 to 60)
+    const gx = Math.round((worldX + 15) * 2);
+    const gz = Math.round((worldZ + 15) * 2);
+    
+    for(let i = -radius; i <= radius; i++) {
+      for(let j = -radius; j <= radius; j++) {
+        const nx = gx + i, nz = gz + j;
+        if (nx >= 0 && nx <= 60 && nz >= 0 && nz <= 60) {
+          this.navGrid[nx][nz] = walkable ? 0 : 1;
+        }
+      }
     }
   },
 
   getPath(startPos, endPos) {
-    const start = { x: Math.round(startPos.x + 15), z: Math.round(startPos.z + 15) };
-    const end = { x: Math.round(endPos.x + 15), z: Math.round(endPos.z + 15) };
-    
+    const start = { x: Math.round((startPos.x + 15) * 2), z: Math.round((startPos.z + 15) * 2) };
+    const end = { x: Math.round((endPos.x + 15) * 2), z: Math.round((endPos.z + 15) * 2) };
+
+    // A* Lite Implementation
     const queue = [[start]];
     const visited = new Set();
     visited.add(`${start.x},${start.z}`);
@@ -300,10 +358,6 @@ window.SceneManager = {
     ceiling.position.y = 5;
     this.scene.add(ceiling);
 
-    this.buildLighting();
-    this.addParticles();
-    this.addRain();
-
     // Neon strips on walls
     this.addNeonStrip(new THREE.Vector3(-14.8, 3, 0), new THREE.Euler(0, Math.PI/2, 0), 0x00c8ff);
     this.addNeonStrip(new THREE.Vector3(14.8, 3, 0), new THREE.Euler(0, -Math.PI/2, 0), 0xff2d78);
@@ -328,104 +382,17 @@ window.SceneManager = {
   addDynamicSceneElements() {
     if (GameState.upgrades.serverRack) this.addServerRack();
     if (GameState.upgrades.coffeeMachine) this.addCoffeeStation();
-    
-    // Re-check levels for expansions
     if (GameState.level >= 15 && !this.scene.getObjectByName('manager_office')) this.addManagerOffice();
     if (GameState.level >= 25 && !this.scene.getObjectByName('vip_lounge')) this.addVIPLounge();
-
     if (GameState.level >= 15 && !this.scene.getObjectByName('trophy_case')) this.addTrophyCase();
-    if (GameState.upgrades.securityCameras && this.securityCameraMeshes.length === 0) {
-      this.securityCameraPositions.forEach(cam => {
-        const camMesh = new THREE.Mesh(
-          new THREE.SphereGeometry(0.2, 8, 8),
-          new THREE.MeshBasicMaterial({ color: 0x888888 })
-        );
-        camMesh.position.copy(cam.pos);
-        camMesh.position.y -= 0.5; // Place slightly below ceiling
-        camMesh.userData.isSecurityCamera = true;
-        camMesh.userData.camId = cam.id;
-        this.scene.add(camMesh);
-        this.securityCameraMeshes.push(camMesh);
-      });
-    }
-    this.updateVisualTheme(); // Apply theme after all elements are built
     this.updateHallOfFame();
-  },
-
-  addManagerOffice() {
-    const group = new THREE.Group();
-    group.name = "manager_office";
-    
-    // Glass Walls
-    const wallMat = new THREE.MeshPhysicalMaterial({ color: 0x88ccff, transparent: true, opacity: 0.2, transmission: 0.5, thickness: 0.5 });
-    const wallL = new THREE.Mesh(new THREE.BoxGeometry(0.1, 3, 5), wallMat);
-    wallL.position.set(-5, 1.5, -12.5);
-    group.add(wallL);
-
-    const wallR = new THREE.Mesh(new THREE.BoxGeometry(0.1, 3, 5), wallMat);
-    wallR.position.set(5, 1.5, -12.5);
-    group.add(wallR);
-
-    const wallFront = new THREE.Mesh(new THREE.BoxGeometry(10, 3, 0.1), wallMat);
-    wallFront.position.set(0, 1.5, -10);
-    group.add(wallFront);
-
-    // Rug
-    const rug = new THREE.Mesh(new THREE.PlaneGeometry(8, 4), new THREE.MeshLambertMaterial({ color: 0x441111 }));
-    rug.rotation.x = -Math.PI / 2;
-    rug.position.set(0, 0.02, -12.5);
-    group.add(rug);
-
-    // Executive Desk
-    const desk = new THREE.Mesh(new THREE.BoxGeometry(3, 0.1, 1.2), new THREE.MeshLambertMaterial({ color: 0x221100 }));
-    desk.position.set(0, 0.8, -13.5);
-    group.add(desk);
-
-    // Manager Chair
-    const chair = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.2, 0.6), new THREE.MeshLambertMaterial({ color: 0x111111 }));
-    chair.position.set(0, 0.6, -14.2);
-    group.add(chair);
-
-    // Laptop on desk
-    const laptopBase = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.02, 0.35), new THREE.MeshLambertMaterial({ color: 0x222222 }));
-    laptopBase.position.set(0.6, 0.81, -13.5);
-    laptopBase.userData.isLaptop = true;
-    group.add(laptopBase);
-    const laptopScreen = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.35, 0.02), new THREE.MeshBasicMaterial({ color: 0x00c8ff }));
-    laptopScreen.position.set(0.6, 1.0, -13.65);
-    laptopScreen.rotation.x = -0.3;
-    laptopScreen.userData.isLaptop = true;
-    group.add(laptopScreen);
-
-    // Security Post outside office
-    const secPost = new THREE.Group();
-    secPost.position.set(-6, 0, -10.5);
-    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.15, 1.2), new THREE.MeshLambertMaterial({ color: 0x222222 }));
-    pillar.position.y = 0.6;
-    secPost.add(pillar);
-    const top = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.05, 0.5), new THREE.MeshLambertMaterial({ color: 0x333333 }));
-    top.position.y = 1.2;
-    secPost.add(top);
-    this.scene.add(secPost);
-
-    this.scene.add(group);
-    
-    // Block navigation
-    for(let x = -5; x <= 5; x++) {
-      for(let z = -15; z <= -10; z++) this.updateNavGrid(x, z, false);
-    }
-    showToast('🏢 Manager Office Unlocked!', 'success');
   },
 
   addServerRack() {
     const rack = new THREE.Mesh(new THREE.BoxGeometry(2, 3, 1), new THREE.MeshLambertMaterial({ color: 0x333333 }));
-    rack.position.set(0, 1.5, -14);
+    rack.position.set(0, 1.5, -14.2);
     rack.name = 'server_rack';
     this.scene.add(rack);
-    for(let x = -1; x <= 1; x++) {
-      for(let z = -15; z <= -13; z++) this.updateNavGrid(x, z, false);
-    }
-    showToast('🗄️ Server Rack installed!', 'success');
   },
 
   addCoffeeStation() {
@@ -433,160 +400,43 @@ window.SceneManager = {
     machine.position.set(-10, 0.75, 13.5);
     machine.name = 'coffee_machine';
     this.scene.add(machine);
-    for(let x = -11; x <= -9; x++) {
-      for(let z = 13; z <= 14; z++) this.updateNavGrid(x, z, false);
-    }
-    showToast('☕ Coffee Machine installed!', 'success');
   },
 
+  addManagerOffice() {
+    const group = new THREE.Group();
+    group.name = "manager_office";
+    const wallMat = new THREE.MeshPhysicalMaterial({ color: 0x88ccff, transparent: true, opacity: 0.2, transmission: 0.5 });
+    const wallFront = new THREE.Mesh(new THREE.BoxGeometry(10, 3, 0.1), wallMat);
+    wallFront.position.set(0, 1.5, -10);
+    group.add(wallFront);
+    this.scene.add(group);
+  },
 
   addVIPLounge() {
     const group = new THREE.Group();
     group.name = "vip_lounge";
-    
-    // Luxury Gold/Glass Walls
-    const wallMat = new THREE.MeshPhysicalMaterial({ color: 0xffd700, transparent: true, opacity: 0.2, transmission: 0.5, thickness: 0.8 });
-    const wallBack = new THREE.Mesh(new THREE.BoxGeometry(8, 3, 0.1), wallMat);
-    wallBack.position.set(10, 1.5, -14);
-    group.add(wallBack);
-
-    const wallSide = new THREE.Mesh(new THREE.BoxGeometry(0.1, 3, 8), wallMat);
-    wallSide.position.set(6, 1.5, -10);
-    group.add(wallSide);
-
-    // Gold Trim
-    const trimMat = new THREE.MeshLambertMaterial({ color: 0xffd700 });
-    const trim = new THREE.Mesh(new THREE.BoxGeometry(8.1, 0.2, 0.2), trimMat);
-    trim.position.set(10, 3, -14);
-    group.add(trim);
-
-    // Purple Carpet
     const carpet = new THREE.Mesh(new THREE.PlaneGeometry(8, 8), new THREE.MeshLambertMaterial({ color: 0x330044 }));
     carpet.rotation.x = -Math.PI / 2;
     carpet.position.set(10, 0.02, -10);
     group.add(carpet);
-
     this.scene.add(group);
-    this.playRenovationAnimation(group, '✨ VIP Lounge Expansion Unlocked!');
   },
 
   addTrophyCase() {
     const group = new THREE.Group();
     group.name = "trophy_case";
-
-    // Cabinet Base
-    const base = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.1, 0.8), new THREE.MeshLambertMaterial({ color: 0x221100 }));
-    base.position.set(0, 0.5, -14.5);
+    const base = new THREE.Mesh(new THREE.BoxGeometry(2.5, 2, 0.8), new THREE.MeshLambertMaterial({ color: 0x221100 }));
+    base.position.set(-12, 1, -13);
     group.add(base);
-
-    // Glass Cabinet
-    const glassMat = new THREE.MeshPhysicalMaterial({ color: 0x88ccff, transparent: true, opacity: 0.1, transmission: 0.9, roughness: 0.1 });
-    const glassBack = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.8, 0.05), glassMat);
-    glassBack.position.set(0, 1.5, -14.85);
-    group.add(glassBack);
-
-    const glassFront = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.8, 0.05), glassMat);
-    glassFront.position.set(0, 1.5, -14.15);
-    group.add(glassFront);
-
-    const glassSides = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.8, 0.7), glassMat);
-    glassSides.position.set(1.2, 1.5, -14.5);
-    group.add(glassSides);
-    const glassSides2 = glassSides.clone();
-    glassSides2.position.x = -1.2;
-    group.add(glassSides2);
-
-    // Shelves
-    const shelfMat = new THREE.MeshLambertMaterial({ color: 0x332211 });
-    const shelf1 = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.05, 0.7), shelfMat);
-    shelf1.position.set(0, 1.0, -14.5);
-    group.add(shelf1);
-    const shelf2 = shelf1.clone();
-    shelf2.position.y = 2.0;
-    group.add(shelf2);
-
     this.scene.add(group);
     this.trophyCaseMesh = group;
-    this.updateTrophyCase();
-    showToast('🏆 Trophy Case Unlocked!', 'success');
-  },
-
-  updateTrophyCase() {
-    if (!this.trophyCaseMesh) return;
-
-    // Clear existing trophies
-    this.trophyCaseMesh.children.filter(c => c.name === 'trophy').forEach(t => this.trophyCaseMesh.remove(t));
-
-    const goldenAchievements = ACHIEVEMENTS.filter(a => a.isGolden && GameState.achievements[a.id]?.unlocked);
-    goldenAchievements.forEach((ach, index) => {
-      const trophyGeo = new THREE.ConeGeometry(0.2, 0.5, 4);
-      const trophyMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.8, roughness: 0.2 });
-      const trophy = new THREE.Mesh(trophyGeo, trophyMat);
-      trophy.name = 'trophy';
-
-      // Position trophies on shelves
-      const shelfY = (index % 2 === 0) ? 1.25 : 2.25; // Alternate shelves
-      const xOffset = -0.8 + (index % 4) * 0.5; // Spread across the shelf
-
-      trophy.position.set(xOffset, shelfY, -14.5);
-      this.trophyCaseMesh.add(trophy);
-    });
-  },
-
-  playRenovationAnimation(group, message) {
-    // Make the group initially invisible
-    group.traverse(obj => {
-      if (obj.isMesh) obj.material.transparent = true;
-      if (obj.isMesh) obj.material.opacity = 0;
-    });
-    
-    showToast('🚧 Renovation in progress...', 'info');
-
-    // Animate opacity over 3 seconds
-    let opacity = 0;
-    const interval = setInterval(() => {
-      opacity += 0.01; // Adjust speed as needed
-      group.traverse(obj => { if (obj.isMesh) obj.material.opacity = opacity; });
-      if (opacity >= 1) {
-        clearInterval(interval);
-        showToast(message, 'success');
-      }
-    }, 30); // ~30ms per frame for 3 seconds = 100 frames
   },
 
   updateVisualTheme() {
-    const wallColors = [0x1a2235, 0x222222, 0x331a2a, 0x1a331a, 0x332a1a]; // Brighter versions
-    const floorColors = [0x20283a, 0x1f1f1f, 0x302030, 0x203020, 0x3a301a]; // Brighter versions
-    
-    const wallIdx = GameState.upgrades.wallColor || 0;
+    const floorColors = [0x1a2235, 0x111111, 0x251025, 0x102510, 0x2a2005];
     const floorIdx = GameState.upgrades.floorPattern || 0;
-
-    this.wallMeshes.forEach(w => w.material.color.setHex(wallColors[wallIdx]));
-    
-    if (this.floorMesh) {
-      this.floorMesh.material.color.setHex(floorColors[floorIdx]);
-      
-      // If upgraded, add a procedural pattern
-      if (floorIdx > 0) {
-        const canvas = document.createElement('canvas');
-        canvas.width = 128; canvas.height = 128;
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#' + floorColors[floorIdx].toString(16).padStart(6, '0');
-        ctx.fillRect(0, 0, 128, 128); // Base color
-        ctx.strokeStyle = 'rgba(255,255,255,0.1)';
-        ctx.lineWidth = 2;
-        if (floorIdx === 1) { // Grid
-          ctx.strokeRect(0, 0, 128, 128);
-        } else if (floorIdx === 2) { // Hex/Dots
-          ctx.beginPath(); ctx.arc(64, 64, 30, 0, Math.PI*2); ctx.stroke();
-        }
-        const tex = new THREE.CanvasTexture(canvas);
-        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-        tex.repeat.set(15, 15);
-        this.floorMesh.material.map = tex;
-      } else {
-        this.floorMesh.material.map = null;
-      }
+    if (this.floorMesh && this.floorMesh.material) {
+      this.floorMesh.material.color.setHex(floorColors[floorIdx] || 0x1a2235);
       this.floorMesh.material.needsUpdate = true;
     }
   },
@@ -594,33 +444,9 @@ window.SceneManager = {
   updateDayNightCycle() {
     if (!this.ambientLight || !this.sunLight) return;
     const hour = GameState.hour + (GameState.minute / 60);
-    
-    // Adjust ambient and sun light intensities and colors
-    let ambientIntensity = 0.6;
-    let sunIntensity = 0.1;
-    let sunColor = 0xffffff;
-
-    if (hour >= 6 && hour < 8) { // Sunrise
-      const t = (hour - 6) / 2;
-      ambientIntensity = 0.6 + (1.0 * t);
-      sunIntensity = 0.1 + (0.7 * t);
-      sunColor = new THREE.Color(0xffaa44).lerp(new THREE.Color(0xffffff), t);
-    } else if (hour >= 8 && hour < 17) { // Day
-      ambientIntensity = 1.6;
-      sunIntensity = 0.8;
-    } else if (hour >= 17 && hour < 20) { // Sunset
-      const t = (hour - 17) / 3;
-      ambientIntensity = 1.6 - (1.0 * t);
-      sunIntensity = 0.8 * (1 - t);
-      sunColor = new THREE.Color(0xffffff).lerp(new THREE.Color(0xff5500), t);
-    } else { // Night
-      ambientIntensity = 0.6;
-      sunIntensity = 0.1;
-    }
-
-    this.ambientLight.intensity = ambientIntensity;
-    this.sunLight.intensity = sunIntensity;
-    this.sunLight.color.set(sunColor);
+    let skyColor = new THREE.Color(hour >= 6 && hour < 18 ? 0x88ccff : 0x050510);
+    this.renderer.setClearColor(skyColor);
+    this.scene.fog.color.copy(skyColor);
   },
 
   addRain() {
@@ -640,18 +466,14 @@ window.SceneManager = {
   },
 
   updateWeatherVisuals(weather) {
-    if (this.rainParticles) {
-      this.rainParticles.visible = (weather === 'rain');
-      this.scene.fog.density = (weather === 'rain') ? 0.08 : 0.035; // Increased fog density for rain
-    }
+    if (this.rainParticles) this.rainParticles.visible = (weather === 'rain');
   },
 
   updateHallOfFame() {
-    // Clear current posters and associated lights
     this.achievementPosters.forEach(p => {
       if (p.userData.light) this.scene.remove(p.userData.light);
       this.scene.remove(p);
-    }); // Clear old lights
+    });
     this.achievementPosters = [];
 
     const unlockedIds = Object.keys(GameState.achievements).filter(id => GameState.achievements[id].unlocked);
@@ -662,18 +484,16 @@ window.SceneManager = {
       // Grid placement on the back wall (z = -14.8)
       const x = -10.5 + (index % 8) * 3;
       const y = 3.5 - Math.floor(index / 8) * 1.5;
-      const z = -14.75;
+      const z = -14.88;
 
       const poster = this.createPosterMesh(ach);
       poster.position.set(x, y, z);
-      poster.userData = { achId: id }; // Store ID for interaction
-
-      // Add a dedicated light for the achievement
-      const lightColor = ach.isGolden ? 0xffd700 : 0x00c8ff;
-      const pLight = new THREE.PointLight(lightColor, 0.4, 3);
-      pLight.position.set(x, y, z + 0.3);
-      this.scene.add(pLight);
-      poster.userData.light = pLight; // Track for deletion
+      poster.userData = { achId: id };
+      
+      const light = new THREE.PointLight(ach.isGolden ? 0xffd700 : 0x00c8ff, 0.4, 3);
+      light.position.set(x, y, z + 0.3);
+      this.scene.add(light);
+      poster.userData.light = light;
 
       this.scene.add(poster);
       this.achievementPosters.push(poster);
@@ -711,42 +531,26 @@ window.SceneManager = {
   },
 
   buildLighting() {
-    // Clear old lights to prevent duplicates
-    this.scene.children.filter(obj => obj.isLight && obj !== this.flashlightMesh).forEach(l => this.scene.remove(l));
-
+    this.scene.children.filter(obj => obj.isLight && !obj.userData.isLaptop).forEach(l => this.scene.remove(l));
+    
     // Ambient
-    this.ambientLight = new THREE.AmbientLight(0x1a2a45, 1.2);
-    this.scene.add(this.ambientLight);
+    const ambient = new THREE.AmbientLight(0x1a2a45, 1.2);
+    this.scene.add(ambient);
 
     // Main overhead
-    if (this.sunLight) this.scene.remove(this.sunLight); // Remove existing sunLight if any
-    this.sunLight = new THREE.DirectionalLight(0x4488cc, 0.6);
-    this.sunLight.position.set(5, 10, 5);
-    this.sunLight.castShadow = true;
-    this.sunLight.shadow.mapSize.width = 1024;
-    this.sunLight.shadow.mapSize.height = 1024;
-    this.scene.add(this.sunLight);
-    
+    const mainLight = new THREE.DirectionalLight(0x4488cc, 0.6);
+    mainLight.position.set(5, 10, 5);
+    mainLight.castShadow = true;
+    mainLight.shadow.mapSize.width = 1024;
+    mainLight.shadow.mapSize.height = 1024;
+    this.scene.add(mainLight);
+
     // Ceiling strip lights
-    // Clear old strip lights
-    this.scene.children.filter(obj => obj.name === 'strip_light' || obj.name === 'strip_light_target').forEach(l => this.scene.remove(l));
     for (let x = -10; x <= 10; x += 5) {
-      const light = new THREE.SpotLight(0x2255aa, 0.7, 15, Math.PI/4);
+      const light = new THREE.SpotLight(0x2255aa, 0.5, 15, Math.PI/4);
       light.position.set(x, 4.8, 0);
       light.target.position.set(x, 0, 0);
       light.castShadow = false;
-      light.name = 'strip_light';
-      light.target.name = 'strip_light_target';
-      this.scene.add(light);
-      this.scene.add(light.target);
-    }
-    // Additional lights for the back wall
-    for (let x = -10; x <= 10; x += 5) {
-      const light = new THREE.SpotLight(0x2255aa, 0.5, 10, Math.PI/6);
-      light.position.set(x, 4.0, -12); light.target.position.set(x, 0, -14);
-      light.castShadow = false;
-      light.name = 'strip_light';
-      light.target.name = 'strip_light_target';
       this.scene.add(light);
       this.scene.add(light.target);
     }
@@ -774,23 +578,20 @@ window.SceneManager = {
     this.constructionSlots = [];
 
     this.zones.forEach(zone => {
-      for (let x = zone.xMin; x <= zone.xMax; x += 3) {
-        for (let z = zone.zMin; z <= zone.zMax; z += 4) {
+      for (let x = zone.xMin; x <= zone.xMax; x += 2) {
+        for (let z = zone.zMin; z <= zone.zMax; z += 3) {
           // Skip if it's too close to the entrance or other fixed objects
           if (x > -2 && x < 2 && z > 10) continue; // Entrance area
           if (x > 5 && x < 9 && z > 10) continue; // Queue table area
           if (x > -2 && x < 2 && z < -10) continue; // Snack bar area
           if (x > 3 && x < 7 && z > 10) continue; // Reception desk area
           if (x < -3 && x > -7 && z > 10) continue; // Cashier desk area
-
-          // Skip Office area
-          if (x > -6 && x < 6 && z < -9) continue;
-
-          // Skip VIP area if not reached level 25
-          if (GameState.level < 25 && x > 5 && z < -5) continue;
+          if (x > -6 && x < 6 && z < -9) continue; // Office area
+          // Root Cause Fix: Lock by zone name, not coordinates, to avoid blocking PlayStation Zone
+          if (GameState.level < 25 && zone.name === 'VIP Zone') continue; 
 
         const geo = new THREE.BoxGeometry(1, 0.5, 1); // Significantly increased height
-        const mat = new THREE.MeshBasicMaterial({ color: zone.color, transparent: true, opacity: 0.3 }); // Slightly higher base opacity
+        const mat = new THREE.MeshBasicMaterial({ color: zone.color, transparent: true, opacity: 0.3, depthWrite: false }); // Prevent z-fighting
         const slot = new THREE.Mesh(geo, mat);
         slot.position.set(x, 0.25, z); // Lifted higher off the floor
         slot.name = 'construction_slot';
@@ -843,93 +644,121 @@ window.SceneManager = {
     group.position.set(x, 0, z);
     group.rotation.y = (rotation !== null) ? rotation : this.toolRotation;
 
-    // Check if station is in the VIP zone
-    const isVIPZone = x >= 6 && x <= 14 && z >= -14 && z <= -6;
+    const isVIPZone = x >= 6 && x <= 14 && z >= -14 && z <= -5;
 
-    // Load GLTF model based on type, or use procedural fallback
-    let deskColor = 0x222222;
-    let screenColor = broken ? 0x330000 : [0x00c8ff, 0xff2d78, 0x39ff14, 0xffd700, 0xaa00ff][quality % 5];
-
-    if (isVIPZone) {
-      screenColor = 0xffd700; // Force golden screen for VIP zone
-    }
+    let screenColor = broken ? 0x110000 : (isVIPZone ? 0xffd700 : [0x00c8ff, 0xff2d78, 0x39ff14, 0xffd700, 0xaa00ff][quality % 5]);
+    let mainMesh = null;
 
     if (type === 'vr') {
-      deskColor = 0x1a0a2a; screenColor = 0xaa00ff;
+      // VR Design: Circular platform + Hanger
+      screenColor = 0xaa00ff;
+      const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 0.05, 16), new THREE.MeshLambertMaterial({ color: 0x1a0a2a }));
+      pad.position.y = 0.02;
+      group.add(pad);
+      
+      const glowRing = new THREE.Mesh(new THREE.TorusGeometry(0.75, 0.02, 8, 24), new THREE.MeshBasicMaterial({ color: screenColor }));
+      glowRing.rotation.x = Math.PI/2;
+      glowRing.position.y = 0.03;
+      group.add(glowRing);
+
+      const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.2, 0.1), new THREE.MeshLambertMaterial({ color: 0x111111 }));
+      pillar.position.set(0, 0.6, -0.4);
+      group.add(pillar);
+
+      const headset = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 0.25), new THREE.MeshLambertMaterial({ color: 0x333333 }));
+      headset.position.set(0, 1.1, -0.2);
+      group.add(headset);
+      mainMesh = pad;
     } else if (type === 'ps') {
-      deskColor = 0x0a1a2a; screenColor = 0x0066ff;
+      // Console Design: Low TV Stand + Sofa
+      screenColor = 0x0066ff;
+      const stand = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.4, 0.6), new THREE.MeshLambertMaterial({ color: 0x0a1a2a }));
+      stand.position.y = 0.2;
+      stand.position.z = -0.3;
+      group.add(stand);
+
+      const consoleBox = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.08, 0.3), new THREE.MeshLambertMaterial({ color: 0x050505 }));
+      consoleBox.position.set(0.3, 0.45, -0.3);
+      group.add(consoleBox);
+
+      const screen = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.7, 0.05), new THREE.MeshBasicMaterial({ color: screenColor }));
+      screen.position.set(0, 0.9, -0.5);
+      group.add(screen);
+
+      const sofa = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.4, 0.6), new THREE.MeshLambertMaterial({ color: 0x221111 }));
+      sofa.position.set(0, 0.2, 0.6);
+      group.add(sofa);
+
+      const sofaBack = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.5, 0.15), new THREE.MeshLambertMaterial({ color: 0x221111 }));
+      sofaBack.position.set(0, 0.5, 0.85);
+      group.add(sofaBack);
+      mainMesh = stand;
     } else if (type === 'pisonet') {
-      deskColor = 0x4a4a4a; screenColor = 0x888888; // Rugged, older look
-    } else if (type === 'pc') {
-      deskColor = 0x222222;
-    }
+      // PisoNet Design: Rugged Wooden Cabinet
+      screenColor = 0x888888;
+      const cabinet = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.8, 0.8), new THREE.MeshLambertMaterial({ color: 0x4a3222 }));
+      cabinet.position.y = 0.9;
+      group.add(cabinet);
 
-    // Procedural Desk
-    // Procedural Desk
-    const desk = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.05, 0.8), new THREE.MeshLambertMaterial({ color: deskColor }));
-    desk.position.y = 0.7;
-    group.add(desk);
+      const screen = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.45, 0.05), new THREE.MeshBasicMaterial({ color: screenColor }));
+      screen.position.set(0, 1.3, 0.38);
+      group.add(screen);
 
-    // Procedural Legs
-    const legs = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.7, 0.7), new THREE.MeshLambertMaterial({ color: 0x111111 }));
-    legs.position.y = 0.35;
-    group.add(legs);
+      const coinSlot = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.2, 0.05), new THREE.MeshLambertMaterial({ color: 0xffd700 }));
+      coinSlot.position.set(0.3, 0.8, 0.4);
+      group.add(coinSlot);
 
-    const tower = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.5, 0.5), new THREE.MeshLambertMaterial({ color: 0x050505 }));
-    tower.position.set(0.4, 0.95, 0);
-    group.add(tower);
+      const stool = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.4, 8), new THREE.MeshLambertMaterial({ color: 0x222222 }));
+      stool.position.set(0, 0.2, 0.8);
+      group.add(stool);
+      mainMesh = cabinet;
+    } else {
+      // Standard PC design
+      const desk = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.05, 0.8), new THREE.MeshLambertMaterial({ color: 0x222222 }));
+      desk.position.y = 0.7;
+      group.add(desk);
 
-    const screen = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.5, 0.05), new THREE.MeshBasicMaterial({ color: screenColor }));
-    screen.position.set(0, 1.2, -0.2);
-    group.add(screen);
+      const legs = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.7, 0.7), new THREE.MeshLambertMaterial({ color: 0x111111 }));
+      legs.position.y = 0.35;
+      group.add(legs);
 
-    if (type === 'pc' || type === 'pisonet') {
+      const tower = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.5, 0.5), new THREE.MeshLambertMaterial({ color: 0x050505 }));
+      tower.position.set(0.4, 0.95, 0);
+      group.add(tower);
+
+      const screen = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.5, 0.05), new THREE.MeshBasicMaterial({ color: screenColor }));
+      screen.position.set(0, 1.2, -0.2);
+      group.add(screen);
+
       const keyboard = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.02, 0.2), new THREE.MeshLambertMaterial({ color: 0x111111 }));
       keyboard.position.set(0, 0.72, 0.15);
       group.add(keyboard);
-      // Add a simple mouse for PC/PisoNet
+
       const mouse = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.02, 0.12), new THREE.MeshLambertMaterial({ color: 0x111111 }));
       mouse.position.set(0.3, 0.72, 0.15);
       group.add(mouse);
-    } else if (type === 'ps') {
-      const controller = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.1, 0.15), new THREE.MeshLambertMaterial({ color: 0x111111 }));
-      controller.position.set(0, 0.75, 0.15);
-      group.add(controller);
-    } else if (type === 'vr') {
-      const headset = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.15, 0.2), new THREE.MeshLambertMaterial({ color: 0x333333 }));
-      headset.position.set(0, 0.75, 0.15);
-      group.add(headset);
-    }
 
-    // Chair
-    if (type === 'ps') {
-      // Console Sofa
-      const sofa = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.4, 0.8), new THREE.MeshLambertMaterial({ color: 0x1a1a1a }));
-      sofa.position.set(0, 0.2, 0.8);
-      group.add(sofa);
-      const sofaBack = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.6, 0.2), new THREE.MeshLambertMaterial({ color: 0x1a1a1a }));
-      sofaBack.position.set(0, 0.5, 1.1);
-      group.add(sofaBack);
-    } else {
-      // Upgraded Gaming Chair
-      const chairColor = type === 'pisonet' ? 0x333333 : 0x222222;
-      const chairBase = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.05, 0.5), new THREE.MeshLambertMaterial({ color: chairColor }));
+      const chairBase = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.05, 0.5), new THREE.MeshLambertMaterial({ color: 0x222222 }));
       chairBase.position.set(0, 0.35, 0.6);
       group.add(chairBase);
 
-      const chairBack = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.1), new THREE.MeshLambertMaterial({ color: 0x111111 }));
-      chairBack.position.set(0, 0.7, 0.85);
+      const chairBack = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.05), new THREE.MeshLambertMaterial({ color: 0x222222 }));
+      chairBack.position.set(0, 0.6, 0.85);
       group.add(chairBack);
-      
-      const armrest = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.2, 0.3), new THREE.MeshLambertMaterial({ color: 0x111111 }));
-      armrest.position.set(0.3, 0.5, 0.6);
-      group.add(armrest);
-      const armrest2 = armrest.clone();
-      armrest2.position.x = -0.3;
-      group.add(armrest2);
+      mainMesh = desk;
     }
 
     this.scene.add(group);
+
+    // CRITICAL: Block the nav grid and construction slot so devices cannot overlap
+    const slot = this.constructionSlots.find(s => 
+      Math.abs(s.mesh.position.x - x) < 0.2 && 
+      Math.abs(s.mesh.position.z - z) < 0.2
+    );
+    if (slot) {
+      slot.occupied = true;
+      slot.mesh.visible = false;
+    }
 
     // Block the nav grid around the PC
     for(let dx = -1; dx <= 1; dx++) {
@@ -942,38 +771,41 @@ window.SceneManager = {
 
     const pcObj = { 
       group, 
-      mesh: desk, 
-      screen, 
+      mesh: mainMesh, 
+      screen: group.children.find(c => c.material && c.material.type === 'MeshBasicMaterial'), 
       light: pcLight, 
       quality, 
       broken, 
       underMaintenance: maintenance,
       occupied: false,
+      isVIP: isVIPZone,
       type: type,
-      isVIP: isVIPZone, // Now correctly defined
       id: GameState.pcs.length 
     };
     
     GameState.pcs.push(pcObj);
+    // Only attempt update if components were found
+    if (pcObj.screen) this.updatePC(pcObj);
     return pcObj;
   },
 
   updatePC(pc) {
-    let color = pc.broken ? 0x330000 : [0x00c8ff, 0xff2d78, 0x39ff14, 0xffd700, 0xaa00ff][pc.quality % 5];
-    if (pc.underMaintenance) color = 0xffff00; // Maintenance yellow
+    let color = pc.broken ? 0x330000 : (pc.isVIP ? 0xffd700 : [0x00c8ff, 0xff2d78, 0x39ff14, 0xffd700, 0xaa00ff][pc.quality % 5]);
+    if (pc.underMaintenance) color = 0xffff00;
     pc.screen.material.color.setHex(color);
     pc.light.intensity = (pc.broken || pc.underMaintenance) ? 0.1 : 0.3;
     pc.light.color.setHex(color);
   },
 
-  showGhost(x, z) {
+  showGhost(x, z, colorHex = 0x00c8ff) {
     if (!this.ghostMesh) {
       const geo = new THREE.BoxGeometry(0.9, 0.5, 0.6);
-      const mat = new THREE.MeshBasicMaterial({ color: 0x00c8ff, transparent: true, opacity: 0.35, wireframe: false });
+      const mat = new THREE.MeshBasicMaterial({ color: colorHex, transparent: true, opacity: 0.45 });
       this.ghostMesh = new THREE.Mesh(geo, mat);
       this.scene.add(this.ghostMesh);
     }
     this.ghostMesh.position.set(x, 0.6, z);
+    this.ghostMesh.material.color.setHex(colorHex);
     this.ghostMesh.rotation.y = this.toolRotation;
     this.ghostMesh.visible = true;
   },
@@ -992,6 +824,22 @@ window.SceneManager = {
     const costs = { pc: 150, ps: 250, vr: 400, pisonet: 80, desk: 50 };
     const tool = this.activeTool;
 
+    // Strict Overlap Check
+    const existing = GameState.pcs.find(p => 
+      Math.abs(p.group.position.x - slot.mesh.position.x) < 0.2 && 
+      Math.abs(p.group.position.z - slot.mesh.position.z) < 0.2
+    );
+
+    if (existing || slot.occupied) {
+      showToast('🚫 Spot already occupied!', 'warn');
+      return;
+    }
+
+    if (slot.occupied) {
+      showToast('🚫 Slot occupied! Sell the device first.', 'warn');
+      return;
+    }
+
     if (!slot.mesh.userData.allowedTools.includes(tool)) {
       showToast(`🚫 Cannot place ${tool.toUpperCase()} in this zone!`, 'warn');
       return;
@@ -1003,6 +851,7 @@ window.SceneManager = {
       return;
     }
     GameState.addCash(-cost, '-₱' + cost);
+    if (window.SoundManager) window.SoundManager.play('purchase');
     const pc = this.placePCAt(slot.mesh.position.x, slot.mesh.position.z, GameState.upgrades.pcQuality, false, null, tool);
     slot.occupied = true;
     slot.mesh.visible = false;
@@ -1019,33 +868,6 @@ window.SceneManager = {
     this.raycaster.setFromCamera(new THREE.Vector2(0, 0), CameraSystem.camera);
     const interactRange = 4.5;
     
-    // Check for Achievement Posters
-    const posterHits = this.raycaster.intersectObjects(this.achievementPosters);
-    if (posterHits.length > 0 && posterHits[0].distance <= interactRange) {
-      const achId = posterHits[0].object.userData.achId;
-      if (achId) openModal('certificate', achId);
-      return;
-    }
-
-    // Check for Laptop
-    const office = this.scene.getObjectByName('manager_office');
-    if (office) {
-      const laptopHits = this.raycaster.intersectObject(office, true);
-      if (laptopHits.length > 0 && laptopHits[0].distance <= interactRange && laptopHits[0].object.userData.isLaptop) {
-        openModal('managerStats');
-        return;
-      }
-    }
-
-    // Check for Security Cameras
-    if (GameState.upgrades.securityCameras) {
-      const camHits = this.raycaster.intersectObjects(this.securityCameraMeshes);
-      if (camHits.length > 0 && camHits[0].distance <= interactRange) {
-        CameraSystem.setFixedCamera(camHits[0].object.userData.camId);
-        return;
-      }
-    }
-
     // Check Customers
     const custMeshes = GameState.customers.map(c => c.mesh);
     const custHits = this.raycaster.intersectObjects(custMeshes, true);
@@ -1110,21 +932,81 @@ window.SceneManager = {
     this.mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
     this.mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
     this.raycaster.setFromCamera(this.mouse, CameraSystem.camera);
+    
+    if (this.activeTool === 'sell') {
+      const pcGroups = GameState.pcs.map(p => p.group);
+      const hits = this.raycaster.intersectObjects(pcGroups, true);
+      if (hits.length > 0) {
+        let obj = hits[0].object;
+        let pc = null;
+        while (obj && !pc) {
+          pc = GameState.pcs.find(p => p.group === obj);
+          obj = obj.parent;
+        }
+        if (pc) {
+          this.showGhost(pc.group.position.x, pc.group.position.z, 0xff2d78);
+          return;
+        }
+      }
+      this.hideGhost();
+      return;
+    }
 
-    // Detect hover over construction slots
-    const slotMeshes = this.constructionSlots.filter(s => !s.occupied).map(s => s.mesh);
-    const slotHits = this.raycaster.intersectObjects(slotMeshes);
-    this.hoveredSlot = slotHits.length > 0 ? slotHits[0].object : null;
-
-    if (!this.activeTool) return;
+    // Get floor position for snapping
     const hits = this.raycaster.intersectObject(this.floorMesh);
     if (hits.length) {
       const p = hits[0].point;
       const sx = Math.round(p.x), sz = Math.round(p.z);
-      this.showGhost(sx, sz);
+      
+      // Find nearest slot to snapped point
+      const slot = this.constructionSlots.find(s => 
+        Math.abs(s.mesh.position.x - sx) < 0.5 && 
+        Math.abs(s.mesh.position.z - sz) < 0.5
+      );
+
+      let isValid = false;
+      if (slot) {
+        this.hoveredSlot = slot.mesh;
+        const toolAllowed = slot.mesh.userData.allowedTools.includes(this.activeTool);
+        isValid = !slot.occupied && toolAllowed;
+      } else {
+        this.hoveredSlot = null;
+      }
+
+      this.showGhost(sx, sz, isValid ? 0x00c8ff : 0xff2d78); // Blue if valid, Pink/Red if invalid
     } else {
       this.hideGhost();
     }
+  },
+
+  sellDevice(pc) {
+    if (pc.occupied) {
+      showToast("⚠️ Cannot sell while occupied!", "warn");
+      return;
+    }
+
+    const costs = { pc: 150, ps: 250, vr: 400, pisonet: 80, desk: 50 };
+    const refund = Math.floor((costs[pc.type] || 150) * 0.5);
+
+    // 1. Remove from scene
+    this.scene.remove(pc.group);
+    this.disposeObject(pc.group);
+
+    // 2. Free construction slot
+    const slot = this.constructionSlots.find(s =>
+      Math.abs(s.mesh.position.x - pc.group.position.x) < 0.1 && 
+      Math.abs(s.mesh.position.z - pc.group.position.z) < 0.1
+    );
+    if (slot) {
+      slot.occupied = false;
+      slot.mesh.visible = true; // Construction slot becomes available again
+    }
+
+    // 3. Update nav grid and GameState
+    this.updateNavGrid(pc.group.position.x, pc.group.position.z, true, (pc.type === 'vr' ? 2 : 1));
+    GameState.pcs = GameState.pcs.filter(p => p !== pc);
+    GameState.addCash(refund, `+₱${refund} sold`);
+    showToast(`💰 Sold ${pc.type.toUpperCase()} for ₱${refund}`, "success");
   },
 
   onCanvasClick(e) {
@@ -1146,33 +1028,6 @@ window.SceneManager = {
         const id = trashHits[0].object.userData.trashId;
         this.cleanTrash(id);
         return;
-      }
-
-      // Check for clicking Achievement Posters
-      const posterHits = this.raycaster.intersectObjects(this.achievementPosters);
-      if (posterHits.length > 0) {
-        const achId = posterHits[0].object.userData.achId;
-        if (achId) openModal('certificate', achId);
-        return;
-      }
-
-      // Check for Laptop
-      const office = this.scene.getObjectByName('manager_office');
-      if (office) {
-        const laptopHits = this.raycaster.intersectObject(office, true);
-        if (laptopHits.length > 0 && laptopHits[0].object.userData.isLaptop) {
-          openModal('managerStats');
-          return;
-        }
-      }
-
-      // Check for Security Cameras
-      if (GameState.upgrades.securityCameras) {
-        const camHits = this.raycaster.intersectObjects(this.securityCameraMeshes);
-        if (camHits.length > 0) {
-          CameraSystem.setFixedCamera(camHits[0].object.userData.camId);
-          return;
-        }
       }
 
       // Check for clicking customers to perform station tasks
@@ -1207,10 +1062,21 @@ window.SceneManager = {
     const isTutorialPlacement = Tutorial.active && Tutorial.STEPS[Tutorial.stepIdx]?.waitFlag === 'pc_placed';
 
     if (isPlacementTool || isTutorialPlacement) {
-      const slotMeshes = this.constructionSlots.filter(s => !s.occupied).map(s => s.mesh);
-      const slotHits = this.raycaster.intersectObjects(slotMeshes);
-      if (slotHits.length > 0) {
-        const slot = this.constructionSlots.find(s => s.mesh === slotHits[0].object);
+      // Use snapping logic to find the slot even if the user clicks slightly off-center
+      const hits = this.raycaster.intersectObject(this.floorMesh);
+      if (hits.length) {
+        const p = hits[0].point;
+        const sx = Math.round(p.x), sz = Math.round(p.z);
+        const slot = this.constructionSlots.find(s => 
+          Math.abs(s.mesh.position.x - sx) < 0.5 && 
+          Math.abs(s.mesh.position.z - sz) < 0.5
+        );
+
+        if (!slot) {
+          showToast('🚫 Cannot build here!', 'warn');
+          return;
+        }
+
         this.tryBuyPC(slot);
         this.hideGhost();
         setTool(null);
@@ -1219,6 +1085,25 @@ window.SceneManager = {
       }
       // If in tutorial placement mode, don't allow other clicks to fall through
       if (isTutorialPlacement) return;
+    }
+
+    if (this.activeTool === 'sell') {
+      const pcGroups = GameState.pcs.map(p => p.group);
+      const pcHits = this.raycaster.intersectObjects(pcGroups, true);
+      if (pcHits.length > 0) {
+        let obj = pcHits[0].object;
+        let pc = null;
+        while (obj && !pc) {
+          pc = GameState.pcs.find(p => p.group === obj);
+          obj = obj.parent;
+        }
+        if (pc) {
+          this.sellDevice(pc);
+          this.hideGhost();
+          setTool(null);
+          return;
+        }
+      }
     }
 
     if (this.activeTool === 'repair') {
@@ -1241,7 +1126,7 @@ window.SceneManager = {
 
   animate() {
     this.frameId = requestAnimationFrame(() => this.animate());
-    const delta = this.clock.getDelta();
+    const delta = Math.min(this.clock.getDelta(), 0.033);
 
     // Animate particles
     const particles = this.scene.getObjectByName('particles');
@@ -1252,37 +1137,6 @@ window.SceneManager = {
         if (pos[i] > 4.5) pos[i] = 0;
       }
       particles.geometry.attributes.position.needsUpdate = true;
-    }
-
-    // Animate rain
-    if (this.rainParticles && this.rainParticles.visible) {
-      const pos = this.rainParticles.geometry.attributes.position.array;
-      for (let i = 1; i < pos.length; i += 3) {
-        pos[i] -= delta * 18;
-        if (pos[i] < 0) pos[i] = 20;
-      }
-      this.rainParticles.geometry.attributes.position.needsUpdate = true;
-    }
-
-    // Animate ghost mesh rotation
-    if (this.ghostMesh && this.ghostMesh.visible) {
-      this.ghostMesh.rotation.y += delta * 2; // Rotate at 2 radians per second
-    }
-
-    // Animate Staff Door
-    if (this.staffDoorHinge) {
-      if (this.staffDoorOpen !== this._prevStaffDoorOpen) {
-        const soundUrl = this.staffDoorOpen 
-          ? "https://assets.mixkit.co/active_storage/sfx/2042/2042-preview.mp3" // Creak open
-          : "https://assets.mixkit.co/active_storage/sfx/2044/2044-preview.mp3"; // Slam shut
-        const audio = new Audio(soundUrl);
-        audio.volume = 0.3;
-        audio.play().catch(() => {}); // Catch browser autoplay blocks
-        this._prevStaffDoorOpen = this.staffDoorOpen;
-      }
-
-      const targetRot = this.staffDoorOpen ? Math.PI / 2 + 1.4 : Math.PI / 2;
-      this.staffDoorHinge.rotation.y = THREE.MathUtils.lerp(this.staffDoorHinge.rotation.y, targetRot, 0.1);
     }
 
     // Update construction slot visuals and zone highlighting
@@ -1314,17 +1168,22 @@ window.SceneManager = {
       slot.mesh.visible = true;
     });
 
-    this.updateDayNightCycle();
     if (CameraSystem.camera) {
       CustomerSystem.update(delta);
       StaffSystem.update(delta);
       CameraSystem.update(delta);
-      this.renderer.render(this.scene, CameraSystem.camera);
+
+      if (this.composer) {
+        this.composer.render();
+      } else {
+        this.renderer.render(this.scene, CameraSystem.camera);
+      }
     }
   },
 
   onResize() {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
+    if (this.composer) this.composer.setSize(window.innerWidth, window.innerHeight);
     if (CameraSystem.camera) {
       CameraSystem.camera.aspect = window.innerWidth / window.innerHeight;
       CameraSystem.camera.updateProjectionMatrix();
@@ -1341,6 +1200,7 @@ function setTool(tool) {
   if (tool === 'ps') document.getElementById('btn-add-ps').classList.add('active');
   if (tool === 'vr') document.getElementById('btn-add-vr').classList.add('active');
   if (tool === 'repair') document.getElementById('btn-repair').classList.add('active');
+  if (tool === 'sell') document.getElementById('btn-sell').classList.add('active');
   
   const cancelBtn = document.getElementById('btn-cancel-tool');
   if (cancelBtn) cancelBtn.classList.toggle('hidden', !tool);

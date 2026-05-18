@@ -26,6 +26,112 @@ window.CustomerSystem = {
     "Piso lang muna, pang check lang ng FB."
   ],
 
+  // Centralized State Machine Logic
+  // Decouples logic from the main loop for better performance and scalability
+  stateHandlers: {
+    queued: {
+      tick: (c) => {
+        c.waitTime++;
+        if (c.waitTime > 10 && c.emotion !== 'angry') {
+          c.emotion = 'angry';
+          updateQueueSidebar();
+        }
+        if (c.waitTime > 30) {
+          c.state = 'leaving';
+          c.target = new THREE.Vector3(0, 0.65, 15);
+          c.walking = true;
+          updateQueueSidebar();
+        }
+      },
+      update: (c, delta) => {} // No special frame logic for queueing
+    },
+    active: {
+      tick: (c) => {
+        c.sessionTime++;
+        
+        // Random events logic
+        if (Math.random() < 0.05 && !c.pc.broken && !c.pc.underMaintenance) {
+          c.pc.broken = true;
+          SceneManager.updatePC(c.pc);
+          c.emotion = 'crash';
+        }
+
+        if (Math.random() < 0.05 && c.requests.length === 0) {
+          window.CustomerSystem.handleSnackRequest(c);
+        }
+
+        if (GameState.upgrades.coffeeMachine && Math.random() < 0.05 && c.requests.length === 0 && !c.hasCaffeine) {
+          window.CustomerSystem.handleCoffeeRequest(c);
+        }
+
+        if (c.canExtend && c.sessionTime >= c.maxSession - 1 && c.requests.length === 0 && Math.random() < 0.2) {
+          window.CustomerSystem.handleExtendRequest(c);
+        }
+
+        // Rating/Reputation dynamics
+        if (GameState.upgrades.internet >= 3) c.emotion = 'excited';
+        else if (GameState.upgrades.internet === 0) c.emotion = 'angry';
+        else if (c.pc.broken) c.emotion = 'crash';
+        else if (!GameState.upgrades.aircon && GameState.hour > 18 && !c.hasCaffeine) c.emotion = 'bored';
+        else c.emotion = 'happy';
+
+        // Session check
+        if (c.sessionTime >= c.maxSession) {
+          if (c.pc) c.pc.occupied = false;
+          c.state = 'walking_to_cashier';
+          c.target = new THREE.Vector3(-5, 0.65, 13);
+          c.walking = true;
+          updateQueueSidebar();
+        }
+      },
+      update: (c, delta) => {
+        // Random Filipino Quips
+        if (Math.random() < 0.0005) {
+          const quip = window.CustomerSystem.FILIPINO_QUIPS[Math.floor(Math.random() * window.CustomerSystem.FILIPINO_QUIPS.length)];
+          window.CustomerSystem.showTextBubble(c, quip);
+          if (quip.includes('bwisit') || quip.includes('trashtalk') || quip.includes('b*ld')) {
+            window.CustomerSystem.applyNoisePenalty(c);
+          }
+        }
+      }
+    },
+    walking_to_pc: {
+      tick: (c) => {},
+      update: (c, delta) => {
+        if (!c.walking) {
+          c.state = 'active';
+          updateQueueSidebar();
+        }
+      }
+    },
+    walking_to_cashier: {
+      tick: (c) => {},
+      update: (c, delta) => {
+        if (!c.walking) {
+          c.state = 'waiting_to_pay';
+          updateQueueSidebar();
+        }
+      }
+    },
+    waiting_to_pay: {
+      tick: (c) => {},
+      update: (c, delta) => {}
+    },
+    leaving: {
+      tick: (c) => {},
+      update: (c, delta) => {
+        if (!c.walking) {
+          const idx = GameState.customers.indexOf(c);
+          if (idx > -1) {
+            SceneManager.scene.remove(c.mesh);
+            GameState.customers.splice(idx, 1);
+            updateQueueSidebar();
+          }
+        }
+      }
+    }
+  },
+
   spawnCustomer() {
     // Max 10 customers waiting in the reception queue
     if (GameState.customers.filter(c => c.state === 'queued').length >= 10) return;
@@ -40,9 +146,10 @@ window.CustomerSystem = {
     // Build simple customer mesh
     const group = new THREE.Group();
     const bodyGeo = THREE.CapsuleGeometry ? new THREE.CapsuleGeometry(0.15, 0.4, 4, 8) : new THREE.CylinderGeometry(0.15, 0.15, 0.55, 8);
-    const isVIP = Math.random() < 0.12; // 12% VIP chance
+    const hasVIPHardware = GameState.level >= 25 && GameState.pcs.some(p => p.isVIP);
+    const isVIP = hasVIPHardware && Math.random() < 0.15;
     const colors = isVIP ? [0xffd700] : [0xff6b6b, 0x4ecdc4, 0xffe66d, 0xa8e6cf, 0xff8b94, 0xc9b1ff];
-    const bodyMat = new THREE.MeshLambertMaterial({ color: colors[Math.floor(Math.random() * colors.length)] });
+    const bodyMat = new THREE.MeshLambertMaterial({ color: isVIP ? 0xffd700 : colors[Math.floor(Math.random() * colors.length)] });
     const body = new THREE.Mesh(bodyGeo, bodyMat);
     body.castShadow = true;
     group.add(body);
@@ -69,7 +176,13 @@ window.CustomerSystem = {
     });
     if (types.length === 0) types.push('gaming'); // Fallback
 
-    const desiredType = types[Math.floor(Math.random() * types.length)];
+    let desiredType;
+    if (isVIP) {
+      desiredType = 'vip';
+    } else {
+      const nonVipTypes = types.filter(t => t !== 'vip');
+      desiredType = nonVipTypes.length > 0 ? nonVipTypes[Math.floor(Math.random() * nonVipTypes.length)] : 'gaming';
+    }
 
     const customer = {
       mesh: group, pc: null, target,
@@ -184,23 +297,6 @@ window.CustomerSystem = {
     customer.target = new THREE.Vector3(0, 0.65, 15);
     customer.walking = true;
 
-    // Generate Review based on final satisfaction
-    const stars = customer.emotion === 'excited' || customer.emotion === 'vip' ? 5 : 
-                  customer.emotion === 'happy' ? 4 : 
-                  customer.emotion === 'bored' ? 3 : 2;
-    const reviewPool = stars >= 4 ? ["Astig ng setups!", "Best local shop.", "Kuya is the best!", "Sarap ng canton dito."] :
-                       stars === 3 ? ["Ok lang.", "Medyo mainit pero pwede na.", "Mabagal konti net."] :
-                       ["Pangit ng mouse.", "Laging lag boss!", "Daming basura.", "Ang ingay!"];
-    
-    GameState.reviews.unshift({
-      id: Date.now() + Math.random(), // Unique ID for responding
-      stars,
-      comment: reviewPool[Math.floor(Math.random() * reviewPool.length)],
-      name: `Guest_${Math.floor(Math.random()*999)}`,
-      day: GameState.day
-    });
-    if (GameState.reviews.length > 15) GameState.reviews.pop();
-
     showToast(`Collected ₱${total} from ${customer.sessionType}`, 'success');
   },
 
@@ -238,17 +334,6 @@ window.CustomerSystem = {
     ctx.font = 'bold 44px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(text, 512, 90); // Centered on new 1024 width
-
-    // Add to Chat Sidebar
-    const chat = document.getElementById('chat-messages');
-    if (chat) {
-      const div = document.createElement('div');
-      div.className = 'chat-msg';
-      div.innerHTML = `<span class="chat-user">Guest_${Math.floor(Math.random()*999)}:</span><span class="chat-text">${text}</span>`;
-      chat.appendChild(div);
-      chat.scrollTop = chat.scrollHeight;
-      if (chat.children.length > 20) chat.firstChild.remove();
-    }
 
     const tex = new THREE.CanvasTexture(canvas);
     const mat = new THREE.SpriteMaterial({ map: tex, transparent: true });
@@ -298,71 +383,16 @@ window.CustomerSystem = {
       }
     }
 
+    // Execute logic based on the customer's current state
     GameState.customers.forEach(c => {
-      if (c.state === 'queued') {
-        c.waitTime++;
-        if (c.waitTime > 10 && c.emotion !== 'angry') {
-          c.emotion = 'angry';
-          updateQueueSidebar();
-        }
-        if (c.waitTime > 30) { 
-          c.state = 'leaving'; 
-          c.target = new THREE.Vector3(0,0.65,15); 
-          c.walking = true; 
-          updateQueueSidebar();
-        }
-        this.showEmotionBubble(c);
-        return;
+      const handler = this.stateHandlers[c.state];
+      if (handler) {
+        handler.tick(c);
       }
 
-      if (c.state === 'active') {
-        c.sessionTime++;
-        
-        // PC malfunctions (skipped if under maintenance or already broken)
-        if (Math.random() < 0.05 && !c.pc.broken && !c.pc.underMaintenance) {
-          c.pc.broken = true;
-          SceneManager.updatePC(c.pc);
-          c.emotion = 'crash';
-        }
-
-        // Customer orders a snack
-        if (Math.random() < 0.05 && c.requests.length === 0) {
-          this.handleSnackRequest(c);
-        }
-
-        // Customer orders coffee if station exists
-        if (GameState.upgrades.coffeeMachine && Math.random() < 0.05 && c.requests.length === 0 && !c.hasCaffeine) {
-          this.handleCoffeeRequest(c);
-        }
-
-        // Kuya Extend request (20% chance near end of session)
-        if (c.canExtend && c.sessionTime >= c.maxSession - 1 && c.requests.length === 0 && Math.random() < 0.2) {
-          this.handleExtendRequest(c);
-        }
-
-        // Network congestion makes customers angry
-        if (GameState.upgrades.networkLoad > GameState.currentNetworkCapacity * 1.2 && Math.random() < 0.1) {
-          c.emotion = 'angry';
-        }
-
-        // Session completes
-        if (c.sessionTime >= c.maxSession) {
-          if (c.pc) c.pc.occupied = false;
-          c.state = 'walking_to_cashier';
-          c.target = new THREE.Vector3(-5, 0.65, 13);
-          c.walking = true;
-          updateQueueSidebar();
-          served++;
-        }
-      }
-
-      // Update emotion based on conditions
-      if (c.state === 'active') {
-        if (GameState.upgrades.internet >= 3) c.emotion = 'excited';
-        else if (GameState.upgrades.internet === 0) c.emotion = 'angry';
-        else if (c.pc.broken) { c.emotion = 'crash'; }
-        else if (!GameState.upgrades.aircon && GameState.hour > 18 && !c.hasCaffeine) c.emotion = 'bored';
-        else c.emotion = 'happy';
+      // Common logic for all states (e.g. session complete increment)
+      if (c.state === 'active' && c.sessionTime >= c.maxSession) {
+        served++;
       }
 
       this.showEmotionBubble(c);

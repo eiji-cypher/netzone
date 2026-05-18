@@ -17,6 +17,73 @@ window.StaffSystem = {
   PERSONALITIES: ['Hardworking','Lazy','Friendly','Grumpy','Enthusiastic','Burnt Out'],
   NAMES: ['Alex','Jordan','Sam','Casey','Riley','Morgan','Taylor','Quinn','Blake','Avery'],
 
+  stateHandlers: {
+    idle: {
+      tick: (emp) => {
+        // Recover mood in break room
+        const breakRoomPos = new THREE.Vector3(-14, 0.65, 10);
+        if (emp.mesh.position.distanceTo(breakRoomPos) < 1.5) {
+          const recoveryRate = GameState.upgrades.staffLounge ? 0.5 : 0.2;
+          emp.mood = Math.min(100, emp.mood + recoveryRate);
+        }
+      },
+      update: (emp, delta) => {
+        const breakRoomPos = new THREE.Vector3(-14, 0.65, 10);
+        if (emp.mesh.position.distanceTo(breakRoomPos) > 1.5) {
+          emp.state = 'walking';
+          emp.targetPos = breakRoomPos.clone();
+          emp.path = SceneManager.getPath(emp.mesh.position, emp.targetPos);
+        }
+        emp.mesh.position.y = 0.65 + Math.sin(Date.now() * 0.002) * 0.01;
+      }
+    },
+    walking: {
+      tick: (emp) => {},
+      update: (emp, delta) => {
+        if (emp.path && emp.path.length > 0) {
+          const nextPoint = emp.path[0];
+          const dir = nextPoint.clone().sub(emp.mesh.position);
+          if (dir.length() < 0.2) {
+            emp.path.shift();
+            if (emp.path.length === 0) {
+              emp.state = emp.cleaningTrashId !== null ? 'cleaning' : emp.fixingPcId !== null ? 'fixing' : 'idle';
+              emp.animationTimer = 2.0;
+            }
+            return;
+          }
+          dir.normalize().multiplyScalar(0.05 * delta * 60);
+          emp.mesh.position.add(dir);
+          emp.mesh.lookAt(nextPoint.x, emp.mesh.position.y, nextPoint.z);
+        }
+      }
+    },
+    cleaning: {
+      tick: (emp) => {},
+      update: (emp, delta) => {
+        emp.animationTimer -= delta;
+        emp.mesh.rotation.y += Math.sin(Date.now() * 0.01) * 0.1;
+        if (emp.animationTimer <= 0) {
+          SceneManager.cleanTrash(emp.cleaningTrashId);
+          emp.cleaningTrashId = null;
+          emp.state = 'idle';
+        }
+      }
+    },
+    fixing: {
+      tick: (emp) => {},
+      update: (emp, delta) => {
+        emp.animationTimer -= delta;
+        emp.mesh.rotation.y += Math.sin(Date.now() * 0.01) * 0.1;
+        if (emp.animationTimer <= 0) {
+          const pc = GameState.pcs.find(p => p.id === emp.fixingPcId);
+          if (pc) { pc.broken = false; SceneManager.updatePC(pc); }
+          emp.fixingPcId = null;
+          emp.state = 'idle';
+        }
+      }
+    }
+  },
+
   generateStaff(roleId) {
     const role = this.ROLES.find(r => r.id === roleId);
     return {

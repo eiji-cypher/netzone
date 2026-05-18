@@ -33,6 +33,7 @@ window.GameState = {
   speed: 1,
   speeds: [1,3,10],
   speedIdx: 0,
+  saveVersion: 2, // Upgraded versioning
   dayFinished: false,
   closingTime: false,
   dailyIncome: 0,
@@ -89,51 +90,44 @@ window.GameState = {
   playtime: 0,    // seconds
   activeTimer: null,
   tickCallbacks: [],
-  lanPartyCooldownHours: 0,  // hours remaining before next LAN party allowed
-  currentTrendId: 'stable',
-  pendingPayments: [], // list of customers ready to pay
-  trash: [],          // Active trash objects {id, x, y, z}
+    lanPartyCooldownHours: 0,
+    currentTrendId: 'stable',
+    pendingPayments: [],
+    trash: [],
 
-  // Derived
-  get maxCustomers() {
-    return Math.max(1, Math.floor(this.pcs.filter(p => !p.broken).length * 1.1));
-  },
-  get currentDate() {
-    const year = Math.floor((this.day - 1) / 360) + 1;
-    const month = Math.floor(((this.day - 1) % 360) / 30) + 1;
-    const day = ((this.day - 1) % 30) + 1;
-    return { day, month, year };
-  },
-  getXPThreshold(lv) {
-    if (lv < this.xpThresholds.length) return this.xpThresholds[lv];
-    return Math.floor(4000 + (lv - 9) * 1000 * Math.pow(1.15, lv - 10));
-  },
-  get hourlyIncome() {
-    // Passive income removed in favor of Station System (Manual Checkout)
-    const mult = this.upgrades.pancitCooker ? 2 : 1;
-    let income = this.upgrades.snackbar ? 50 * mult : 0;
-    if (this.upgrades.vending && !this.upgrades.vendingJammed) income += 80;
-    return income;
-  },
-  reviews: [],
-  get rating() {
-    if (this.reviews.length === 0) return 3.5;
-    const avgStars = this.reviews.reduce((s, r) => s + r.stars, 0) / this.reviews.length;
-    const cleanliness = Math.max(0, 5 - (this.trash.length * 0.4));
-    const r = (avgStars * 0.7) + (cleanliness * 0.3);
-    return Math.min(5, Math.max(0, r));
-  },
-  get ratingStars() {
-    const r = Math.round(this.rating);
-    return '⭐'.repeat(r) + '☆'.repeat(5 - r);
-  },
-  get currentNetworkCapacity() {
-    // Base capacity + bonus from network upgrades
-    return 100 + (this.upgrades.networkLevel * 100);
-  },
-  get staffWages() {
-    return this.staff.reduce((s, e) => s + e.salary, 0);
-  },
+    get maxCustomers() {
+      return Math.max(1, Math.floor(this.pcs.filter(p => !p.broken).length * 1.1));
+    },
+    get currentDate() {
+      const year = Math.floor((this.day - 1) / 360) + 1;
+      const month = Math.floor(((this.day - 1) % 360) / 30) + 1;
+      const day = ((this.day - 1) % 30) + 1;
+      return { day, month, year };
+    },
+    getXPThreshold(lv) {
+      if (lv < this.xpThresholds.length) return this.xpThresholds[lv];
+      return Math.floor(4000 + (lv - 9) * 1000 * Math.pow(1.15, lv - 10));
+    },
+    get hourlyIncome() {
+      const mult = this.upgrades.pancitCooker ? 2 : 1;
+      let income = this.upgrades.snackbar ? 50 * mult : 0;
+      if (this.upgrades.vending && !this.upgrades.vendingJammed) income += 80;
+      return income;
+    },
+    get rating() {
+      const cleanliness = Math.max(0, 5 - (this.trash.length * 0.4));
+      return Math.min(5, Math.max(0, cleanliness));
+    },
+    get ratingStars() {
+      const r = Math.round(this.rating);
+      return '⭐'.repeat(r) + '☆'.repeat(5 - r);
+    },
+    get currentNetworkCapacity() {
+      return 100 + (this.upgrades.networkLevel * 100);
+    },
+    get staffWages() {
+      return this.staff.reduce((s, e) => s + e.salary, 0);
+    },
 
   nextDay() {
     this.dayFinished = false;
@@ -199,6 +193,7 @@ window.GameState = {
         this.currentTrendId = newTrend.id;
         addEventLog(`📈 Market Shift: ${newTrend.name}`);
         showToast(`${newTrend.icon} Trend: ${newTrend.name}`, 'info');
+        if (window.SoundManager) window.SoundManager.updateMusic();
       }
     }
   },
@@ -209,6 +204,7 @@ window.GameState = {
 
   serialize() {
     return {
+      saveVersion: 1,
       cafeName: this.cafeName,
       cash: this.cash, xp: this.xp, level: this.level,
       reputation: this.reputation,
@@ -253,6 +249,7 @@ window.GameState = {
   },
 
   restore(data) {
+    if (!data || typeof data !== 'object') return;
     Object.assign(this, {
       cafeName: data.cafeName || "NetZone",
       cash: data.cash, xp: data.xp, level: data.level,

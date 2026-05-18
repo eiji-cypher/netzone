@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Kuya Extend Simulator</title>
+  <title>NetZone - Internet Cafe Tycoon</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌐</text></svg>">
@@ -20,6 +20,10 @@
       <div class="loading-spinner-wrap">
         <div class="loading-spinner"></div>
       </div>
+      <div class="preload-container">
+        <div id="preload-bar" class="preload-bar"></div>
+        <div id="preload-text" class="preload-text">INITIALIZING SYSTEMS... 0%</div>
+      </div>
       <div id="loading-status" class="loading-text status-closed">CLOSED</div>
     </div>
   </div>
@@ -33,7 +37,7 @@
     <div class="menu-content">
       <div class="logo-wrap">
         <div class="logo-pre">WELCOME TO</div>
-        <h1 class="logo">PisoNet <span>Simulator</span></h1>
+        <h1 class="logo">NetZone <span>Tycoon</span></h1>
         <div class="logo-sub">BLUE SCREEN CAFE TYCOON</div>
       </div>
       <div class="menu-btns">
@@ -120,68 +124,62 @@
       </div>
     </div>
 
-    <!-- Left sidebar -->
-    <div id="sidebar">
-      <button class="sb-btn" id="btn-add-pc" onclick="setTool('pc')" title="Buy PC (₱150)">
-        🖥️<span>PC<br><small>₱150</small></span>
-      </button>
-      <button class="sb-btn" id="btn-add-desk" onclick="setTool('desk')" title="Add Desk (₱50)">
-        🪑<span>Desk<br><small>₱50</small></span>
-      </button>
-      <button class="sb-btn" id="btn-add-pisonet" onclick="setTool('pisonet')" title="Buy Piso Net Station (₱80)">
-        🪙<span>Piso Net<br><small>₱80</small></span>
-      </button>
-      <button class="sb-btn" id="btn-add-ps" onclick="setTool('ps')" title="Buy Console Station (₱250)">
-        🎮<span>Console<br><small>₱250</small></span>
-      </button>
-      <button class="sb-btn" id="btn-add-vr" onclick="setTool('vr')" title="Buy VR Room (₱400)">
-        🥽<span>VR Room<br><small>₱400</small></span>
-      </button>
-      <button class="sb-btn" id="btn-flashlight" onclick="toggleFlashlight()" title="Toggle Flashlight (F)">
-        🔦<span>Flashlight</span>
-      </button>
-      <button class="sb-btn hidden" id="btn-pancit" onclick="openModal('pancitMinigame')" title="Cook Pancit Canton">
-        🍜<span>Cook<br><small>Minigame</small></span>
-      </button>
-      <button class="sb-btn" id="btn-repair" onclick="setTool('repair')" title="Repair Tool (E to interact)">
-        🔧<span>Repair<br><small>Press E</small></span>
-      </button>
-      <button class="sb-btn danger hidden" id="btn-cancel-tool" onclick="setTool(null)" title="Cancel current tool (ESC)">
-        ✕<span>Cancel<br><small>Tool</small></span>
-      </button>
-      <button class="sb-btn" id="btn-upgrades" onclick="openModal('upgrades')">
-        ⬆️<span>Upgrades</span>
-      </button>
-      <button class="sb-btn" id="btn-server" onclick="openModal('server')">
-        🗄️<span>Server</span>
-      </button>
-      <button class="sb-btn" id="btn-staff" onclick="openModal('staff')">
-        👔<span>Staff</span>
-      </button>
-      <button class="sb-btn" id="btn-rivals" onclick="openModal('rivals')">
-        🏆<span>Rivals</span>
-      </button>
-      <button class="sb-btn" id="btn-skills" onclick="openModal('skills')">
-        🌳<span>Skills</span>
-      </button>
-      <button class="sb-btn" id="btn-achievements" onclick="openModal('achievements')">
-        🎖️<span>Awards</span>
-      </button>
-      <button class="sb-btn" id="btn-reviews-tab" onclick="openModal('reviews')" title="View Customer Reviews">
-        ⭐<span>Reviews</span>
-      </button>
-      <button class="sb-btn" id="btn-lan" onclick="hostLanParty()">
-        🎉<span>LAN Party</span>
-      </button>
-    </div>
-
-    <!-- Twitch-style Chat -->
-    <div id="chat-sidebar" class="chat-collapsed">
-      <div class="chat-header" onclick="toggleChat()">
-        <span>💬 CAFE CHAT</span>
-        <button id="chat-toggle-btn">◀</button>
+    <!-- Main Navigation Container -->
+    <div id="hud-main-container">
+      <!-- Scrollable Left sidebar -->
+      <div id="sidebar">
+        <button class="sb-btn" id="btn-add-pc" onclick="setTool('pc')" data-modal-id="pc" title="Buy PC (₱150)">
+          🖥️<span>PC<br><small>₱150</small></span>
+        </button>
+        <button class="sb-btn" id="btn-add-desk" onclick="setTool('desk')" data-modal-id="desk" title="Add Desk (₱50)">
+          🪑<span>Desk<br><small>₱50</small></span>
+        </button>
+        <button class="sb-btn" id="btn-add-pisonet" onclick="setTool('pisonet')" data-modal-id="pisonet" title="Buy Piso Net (₱80)">
+          🪙<span>Piso Net<br><small>₱80</small></span>
+        </button>
+        <button class="sb-btn" id="btn-add-ps" onclick="setTool('ps')" data-modal-id="ps" title="Buy Console (₱250)">
+          🎮<span>Console<br><small>₱250</small></span>
+        </button>
+        <button class="sb-btn" id="btn-add-vr" onclick="setTool('vr')" data-modal-id="vr" title="Buy VR Room (₱400)">
+          🥽<span>VR Room<br><small>₱400</small></span>
+        </button>
+        <button class="sb-btn" id="btn-sell" onclick="setTool('sell')" title="Sell Device (50% Refund)">
+          💰<span>Sell<br><small>Refund</small></span>
+        </button>
+        <button class="sb-btn" id="btn-flashlight" onclick="CameraSystem.toggleFlashlight()" title="Flashlight (F)">
+          🔦<span>Flashlight</span>
+        </button>
+        <button class="sb-btn hidden" id="btn-pancit" onclick="openModal('pancitMinigame')" data-modal-id="pancitMinigame">
+          🍜<span>Cook<br><small>Canton</small></span>
+        </button>
+        <button class="sb-btn" id="btn-repair" onclick="setTool('repair')" data-modal-id="repair" title="Repair Tool">
+          🔧<span>Repair<br><small>Press E</small></span>
+        </button>
+        <button class="sb-btn danger hidden" id="btn-cancel-tool" onclick="setTool(null)">
+          ✕<span>Cancel<br><small>Tool</small></span>
+        </button>
+        <button class="sb-btn" id="btn-upgrades" onclick="openModal('upgrades')" data-modal-id="upgrades">
+          ⬆️<span>Upgrades</span>
+        </button>
+        <button class="sb-btn" id="btn-server" onclick="openModal('server')" data-modal-id="server">
+          🗄️<span>Server</span>
+        </button>
+        <button class="sb-btn" id="btn-staff" onclick="openModal('staff')" data-modal-id="staff">
+          👔<span>Staff</span>
+        </button>
+        <button class="sb-btn" id="btn-rivals" onclick="openModal('rivals')" data-modal-id="rivals">
+          ⚔️<span>Rivals</span>
+        </button>
+        <button class="sb-btn" id="btn-skills" onclick="openModal('skills')" data-modal-id="skills">
+          🌳<span>Skills</span>
+        </button>
+        <button class="sb-btn" id="btn-achievements" onclick="openModal('achievements')" data-modal-id="achievements">
+          🎖️<span>Awards</span>
+        </button>
+        <button class="sb-btn" id="btn-lan" onclick="hostLanParty()">
+          🎉<span>LAN Party</span>
+        </button>
       </div>
-      <div id="chat-messages"></div>
     </div>
 
     <!-- Bottom bar (rep + camera mode) -->
@@ -205,14 +203,22 @@
     <div id="event-log"></div>
   </div>
 
-  <!-- QUEUE SIDEBAR -->
-  <div id="queue-sidebar" class="hidden">
-    <div class="sidebar-label">WAITING</div>
-    <div id="queue-list"></div>
-  </div>
-  <div id="active-sidebar" class="hidden">
-    <div class="sidebar-label">ACTIVE</div>
-    <div id="active-list"></div>
+  <!-- RIGHT PANELS WRAPPER (Retractable) -->
+  <div id="right-panels-wrap" class="hidden">
+    <button id="btn-toggle-right" class="side-toggle-btn" onclick="UIManager.toggleRightPanels()">
+      ▶
+      <div id="queue-badge" class="notification-badge hidden">0</div>
+    </button>
+    <div id="right-panels-content">
+      <div id="queue-sidebar">
+        <div class="sidebar-label">WAITING</div>
+        <div id="queue-list"></div>
+      </div>
+      <div id="active-sidebar">
+        <div class="sidebar-label">ACTIVE</div>
+        <div id="active-list"></div>
+      </div>
+    </div>
   </div>
 
   <!-- CROSSHAIR -->
@@ -222,6 +228,7 @@
   <div id="modal-overlay" class="modal-overlay hidden" onclick="closeModal()">
     <div class="modal-box" onclick="event.stopPropagation()">
       <div class="modal-header">
+        <button id="modal-back-btn" class="modal-back-btn hidden" onclick="UIManager.goBack()">⬅ Back</button>
         <h2 id="modal-title">Modal</h2>
         <button class="modal-close-btn" onclick="closeModal()">✕</button>
       </div>
@@ -262,8 +269,15 @@
   </div>
 
   <!-- Scripts (order matters) -->
-  <script src="https://unpkg.com/three@0.149.0/build/three.min.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/three@0.147.0/build/three.min.js" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/three@0.147.0/examples/js/loaders/GLTFLoader.js"></script>
+  <!-- Post-processing and Bloom Shaders -->
+  <script src="https://unpkg.com/three@0.147.0/examples/js/postprocessing/EffectComposer.js"></script>
+  <script src="https://unpkg.com/three@0.147.0/examples/js/postprocessing/RenderPass.js"></script>
+  <script src="https://unpkg.com/three@0.147.0/examples/js/postprocessing/ShaderPass.js"></script>
+  <script src="https://unpkg.com/three@0.147.0/examples/js/shaders/CopyShader.js"></script>
+  <script src="https://unpkg.com/three@0.147.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+  <script src="https://unpkg.com/three@0.147.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="js/state.js" onerror="console.error('CRITICAL: js/state.js failed to load (404)')"></script>
   <script src="js/scene.js" onerror="console.error('CRITICAL: js/scene.js failed to load (404)')"></script>
